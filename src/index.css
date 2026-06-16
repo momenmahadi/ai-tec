@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", "Tajawal", "Cairo", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "IBM Plex Sans Arabic", "Cairo", "Tajawal", system-ui, sans-serif;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "PDF Quiz Generator",
+  "description": "توليد اختبارات تفاعلية احترافية من ملفات PDF والملخصات باستخدام الذكاء الاصطناعي في 30 ثانية",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
