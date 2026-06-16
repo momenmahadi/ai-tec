@@ -80,7 +80,6 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">مُعلِّـم الذكي</h1>
-            <span className="text-[9px] text-gray-400 font-bold font-mono uppercase tracking-widest mt-0.5 block">Quiz Builder AI</span>
           </div>
         </div>
 
@@ -93,15 +92,6 @@ export default function App() {
             }`}
           >
             الرئيسية
-          </button>
-          
-          <button
-            onClick={() => setCurrentView('tool')}
-            className={`transition cursor-pointer ${
-              currentView === 'tool' ? 'text-blue-600 font-bold' : 'text-gray-400 hover:text-blue-600'
-            }`}
-          >
-            أداة الاختبارات
           </button>
         </div>
       </header>

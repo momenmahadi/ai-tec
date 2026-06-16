@@ -119,15 +119,13 @@ export default function ToolSection({
           const response = await fetch(fetchUrl, {
             method: 'GET',
             headers: {
-              'Content-Type': 'application/json',
               'apikey': anonKey,
               'Authorization': `Bearer ${anonKey}`,
+              'Content-Type': 'application/json',
             },
           });
           if (response.ok) {
             data = await response.json();
-            detectedColumn = 'key_code';
-            // If it returned an empty list but the request succeeded, wait and check if we should fallback to code
             if (!Array.isArray(data) || data.length === 0) {
               throw new Error('not_found_in_keycode');
             }
@@ -147,9 +145,9 @@ export default function ToolSection({
           const response = await fetch(fetchUrl, {
             method: 'GET',
             headers: {
-              'Content-Type': 'application/json',
               'apikey': anonKey,
               'Authorization': `Bearer ${anonKey}`,
+              'Content-Type': 'application/json',
             },
           });
           if (!response.ok) {
@@ -160,47 +158,6 @@ export default function ToolSection({
             } catch {
               errorMsg = `${response.status} ${response.statusText || ''}`;
             }
-
-            // Check if the error is "Could not find the table"
-            if (errorMsg.includes('Could not find the table') || errorMsg.includes('relation') || errorMsg.includes('does not exist')) {
-              let availableTables: string[] = [];
-              try {
-                const specRes = await fetch(`${baseUrl}/rest/v1/`, {
-                  method: 'GET',
-                  headers: {
-                    'apikey': anonKey,
-                    'Authorization': `Bearer ${anonKey}`,
-                  }
-                });
-                if (specRes.ok) {
-                  const specObj = await specRes.json();
-                  if (specObj && specObj.paths) {
-                    availableTables = Object.keys(specObj.paths)
-                      .map(p => p.slice(1)) // remove leading '/'
-                      .filter(p => p && p !== '/' && !p.startsWith('rpc/'));
-                  }
-                }
-              } catch (specErr) {
-                console.error('Failed to query Supabase OpenAPI spec:', specErr);
-              }
-
-              if (availableTables.length > 0) {
-                const closeMatches = availableTables.filter(t => {
-                  const lt = t.toLowerCase();
-                  return lt === 'active_key' || lt === 'activekeys' || lt === 'active_key_codes' || lt === 'keys' || lt === 'key' || lt.includes('active') || lt.includes('key');
-                });
-
-                let suggestion = '';
-                if (closeMatches.length > 0) {
-                  suggestion = ` هل تقصد جدول: "${closeMatches.join(' أو ')}"؟ يرجى تسمية الجدول بدقة باسم "active_keys" أو تعديله.`;
-                }
-
-                throw new Error(`تعذر العثور على جدول 'active_keys' في قاعدة بيانات Supabase.${suggestion} الجداول المتاحة حالياً للوصول العام (anon) هي: [${availableTables.join(', ')}].`);
-              } else {
-                throw new Error(`تعذر العثور على جدول 'active_keys' في قاعدة بيانات Supabase. لا تتوفر أي جداول في الوصول العام (anon) بقاعدة البيانات حالياً. يرجى مراجعة الصلاحيات أو تفعيل جدول 'active_keys'.`);
-              }
-            }
-
             throw new Error(`فشل الاتصال بـ Supabase: ${errorMsg}`);
           }
           data = await response.json();
@@ -208,32 +165,47 @@ export default function ToolSection({
         }
 
         if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('كود التفعيل غير موجود بقاعدة البيانات. يرجى التحقق من المدخلات أو توليد كود مسبق.');
+          throw new Error('رمز التفعيل الذي أدخلته غير متواجد في قاعدة البيانات. يرجى مراجعة الكود أو شراء باقة صالحة.');
         }
 
-        const keyRecord = data[0];
-        const credits = Number(keyRecord.credits);
+        const record = data[0];
+        const credits = typeof record.credits === 'number' ? record.credits : 1;
 
-        if (isNaN(credits) || credits <= 0) {
-          throw new Error('عذراً، هذا الكود مستهلك بالكامل ورصيده الحالي صفر.');
+        if (credits <= 0) {
+          throw new Error('لقد استنفد هذا الكود كامل رصيد الاختبارات المتاح له. يرجى اقتناء باقة جديدة.');
         }
 
+        // Establish active session
         setActiveKey({
           code: codeToVerify,
           credits: credits,
           columnName: detectedColumn
         });
+
+        // Advance to designer
         setToolView('builder');
       }
     } catch (err: any) {
       console.error(err);
-      setErrorText(err.message || 'حدث خطأ في عملية التحقق.');
+      let errMsg = err.message || 'فشلت عملية التحقق برمز التفعيل.';
+      
+      // Look for table mapping errors to show clear SQL guidance
+      if (errMsg.includes('not_found_in_keycode')) {
+        errMsg = 'لم يتم العثور على رمز التفعيل المطابق في قاعدة البيانات.';
+      }
+      setErrorText(errMsg);
     } finally {
       setIsVerifying(false);
     }
   };
 
-  // 2. Drag & Drop Handlers
+  // 2. File Upload Change Handlers
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processSelectedFile(e.target.files[0]);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -243,57 +215,54 @@ export default function ToolSection({
     setIsDragging(false);
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    setErrorText(null);
-
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      const file = files[0];
-      if (file.type !== 'application/pdf') {
-        setErrorText('يرجى رفع ملف بصيغة PDF فقط.');
-        return;
-      }
-      processSelectedFile(file);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setErrorText(null);
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      processSelectedFile(files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
   const processSelectedFile = async (file: File) => {
+    setErrorText(null);
+    if (file.type !== 'application/pdf') {
+      setErrorText('يرجى اختيار ملف مستند بصيغة PDF فقط.');
+      return;
+    }
+
     setUploadedFile(file);
-    setPdfParsingProgress(1);
-    setExtractedPdfText('');
-    
+    setPdfParsingProgress(0);
+
     try {
-      const extractedText = await extractTextFromPdf(file, (progress) => {
-        setPdfParsingProgress(progress);
+      const text = await extractTextFromPdf(file, (progress) => {
+        setPdfParsingProgress(Math.min(100, Math.floor(progress * 100)));
       });
-      setExtractedPdfText(extractedText);
+
+      if (!text || text.trim().length === 0) {
+        throw new Error('تعذر قراءة أي كلمات صحيحة أو نصوص عربية من ملف الـ PDF. قد يكون المستند عبارة عن صور ممسوحة ضوئياً فقط.');
+      }
+
+      setExtractedPdfText(text);
     } catch (err: any) {
       console.error(err);
-      setErrorText(err.message || 'حدث خطأ أثناء معالجة ملف الـ PDF. يرجى التحقق من سلامة الملف.');
+      setErrorText(err.message || 'حدث خطأ مباغت أثناء تفكيك وقراءة ملف الـ PDF.');
       setUploadedFile(null);
     } finally {
       setPdfParsingProgress(null);
     }
   };
 
-  // 3. Quiz Generation Trigger (Deduct credit & call backend)
+  // 3. AI Quiz Generation Request
   const handleGenerateQuiz = async () => {
     setErrorText(null);
-    if (!activeKey) return;
+    if (!activeKey) {
+      setToolView('activate');
+      setErrorText('يرجى تفعيل كود الباقة أولاً للوصول لميزات توليد الاختبارات.');
+      return;
+    }
 
-    // Check localized credit balance
     if (activeKey.credits <= 0) {
-      setErrorText('لا يوجد رصيد كافٍ في الكود لتوليد الاختبار.');
+      setErrorText('رصيد الاختبارات غير كافٍ. يرجى تفعيل كود جديد.');
       return;
     }
 
@@ -301,13 +270,13 @@ export default function ToolSection({
     let textToAnalyse = '';
     if (inputMethod === 'pdf') {
       if (!uploadedFile || !extractedPdfText) {
-        setErrorText('يرجى رفع ملف PDF والانتظار حتى يتم استخراج النص.');
+        setErrorText('يرجى رفع ملف PDF والانتظار حتى يتم استخراج المضمون العلمي.');
         return;
       }
       textToAnalyse = extractedPdfText;
     } else {
       if (!manualText.trim() || manualText.trim().length < 50) {
-        setErrorText('يرجى لصق نص كافٍ (أكثر من 50 حرفاً) لتوليد اختبار دقيق.');
+        setErrorText('يرجى لصق نص كافٍ (أكثر من 50 حرفاً) لتشكيل المادة العلمية للاختبار الذكي.');
         return;
       }
       textToAnalyse = manualText;
@@ -316,7 +285,7 @@ export default function ToolSection({
     setIsGenerating(true);
 
     try {
-      // Step A: Deduct 1 credit from database BEFORE representing results as requested!
+      // Step A: Deduct 1 credit from database BEFORE representing results
       const newCreditsBalance = activeKey.credits - 1;
 
       if (!useSandbox) {
@@ -360,7 +329,7 @@ export default function ToolSection({
           } catch {
             errorMsg = `${patchResponse.status} ${patchResponse.statusText || ''}`;
           }
-          throw new Error(`فشل تحديث الخصم في قاعدة البيانات: ${errorMsg}`);
+          throw new Error(`فشل تحديث الرصيد في قاعدة البيانات: ${errorMsg}`);
         }
       }
 
@@ -416,7 +385,7 @@ export default function ToolSection({
   const handleCorrectQuiz = () => {
     // Audit that at least one question got answered for safety
     if (Object.keys(userAnswers).length === 0) {
-      setErrorText('يرجى تحديد إجابة واحدة على الأقل قبل تصحيح الاختبار.');
+      setErrorText('يرجى تحديد إجابة واحدة على الأقل قبل تصحيح الاختبار الدراسـي.');
       return;
     }
 
@@ -448,64 +417,91 @@ export default function ToolSection({
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 py-8 font-sans">
+    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-10 font-sans relative">
       
-      {/* Top Breadcrumb Navigation */}
-      <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-4">
+      {/* 2. Beautiful Harmonious Educational Background Image Inside Tool Section */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center pointer-events-none mix-blend-overlay opacity-[0.03] transition-opacity duration-1000"
+        style={{ 
+          backgroundImage: `url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1920&q=80')` 
+        }} 
+      />
+
+      {/* Top Breadcrumb & Status Navigation with Premium Stepper Layout */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-10 border-b border-slate-100 pb-5 z-10 relative">
         <button
           onClick={onBackToLanding}
-          className="flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+          className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer self-start sm:self-auto group"
         >
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-1 transition-transform" />
           العودة للرئيسية
         </button>
 
+        {/* Stepper indicator pills */}
+        <div className="flex items-center gap-1.5 sm:gap-3 text-xs bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50">
+          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+            toolView === 'activate' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500'
+          }`}>1. تنشيط الكود</span>
+          <span className="text-slate-300 font-mono">/</span>
+          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+            toolView === 'builder' ? 'bg-slate-900 text-white shadow-xs' : activeKey ? 'text-slate-800 font-bold' : 'text-slate-400'
+          }`}>2. بناء وتوليد</span>
+          <span className="text-slate-300 font-mono">/</span>
+          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
+            toolView === 'quiz' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-400'
+          }`}>3. الاختبار التقييمي</span>
+        </div>
+
+        {/* Key credentials container if active */}
         {activeKey && (
-          <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-700">
-            <span className="flex items-center gap-1">
-              <Key className="w-3.5 h-3.5 text-indigo-500" />
-              كود التفعيل: <code className="bg-slate-200 px-1 rounded font-mono text-indigo-700">{activeKey.code}</code>
+          <div className="flex items-center gap-4 bg-white/90 backdrop-blur-md border border-slate-150 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 shadow-xs">
+            <span className="flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+              كود نشط: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-700">{activeKey.code}</code>
             </span>
-            <span className="text-slate-300">|</span>
-            <span className="flex items-center gap-1 text-slate-800">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-              الرصيد المتبقي: 
-              <span className="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-md min-w-[20px] text-center">
+            <span className="text-slate-200">|</span>
+            <span className="flex items-center gap-1 text-slate-850">
+              <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-spin" style={{ animationDuration: '8s' }} />
+              الرصيد: 
+              <span className="bg-blue-50 text-blue-600 font-extrabold px-2 py-0.5 rounded-md min-w-[20px] text-center border border-blue-100">
                 {activeKey.credits}
               </span> 
-              الاختبارات
+              محاولات
             </span>
           </div>
         )}
       </div>
 
-      {/* Global Error Banner */}
+      {/* Database Setup Guideline and General Errors */}
       {errorText && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-5 bg-red-50 border border-red-100 text-red-700 rounded-2xl flex flex-col gap-3 text-sm font-medium"
+          className="mb-8 p-6 bg-red-50 border border-red-100 text-red-800 rounded-3xl flex flex-col gap-4 text-sm font-medium shadow-sm z-10 relative"
         >
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
             <div className="space-y-1 flex-1">
-              <p className="font-bold">تنبيه النظام</p>
-              <p className="text-red-600 font-light leading-relaxed">{errorText}</p>
+              <p className="font-bold text-slate-950 text-sm">تنبيه النظام</p>
+              <p className="text-red-700 font-light leading-relaxed">{errorText}</p>
             </div>
           </div>
 
           {(errorText.includes('class cache') || errorText.includes('cache') || errorText.includes('active_keys') || errorText.includes('جدول')) && (
-            <div className="mt-2 bg-white/90 border border-red-200 rounded-xl p-4 text-slate-700 font-light space-y-3 shadow-sm">
-              <p className="font-bold text-slate-900 text-xs sm:text-sm">💡 طريقة تهيئة الجدول في Supabase لإصلاح المشكلة:</p>
-              <ol className="list-decimal list-inside text-xs space-y-1.5 text-slate-600">
-                <li>افتح لوحة تحكم مشروعك في <strong className="text-emerald-700">Supabase</strong>.</li>
-                <li>من القائمة الجانبية اليسرى، اختر <strong className="text-indigo-600">SQL Editor</strong>.</li>
-                <li>اضغط على زر <strong className="text-indigo-600">New Query</strong> لفتح محرر استعلام فارغ.</li>
-                <li>انسخ الكود الجاهز بالأسفل والصقه في المحرر، ثم اضغط على زر <strong className="bg-[#10b981] text-white px-1.5 py-0.5 rounded text-[10px] font-bold">Run</strong> لتشغيل الاستعلام.</li>
+            <div className="mt-2 bg-white/95 border border-red-200 rounded-2xl p-5 text-slate-700 font-light space-y-3 shadow-md">
+              <p className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#10b981]" />
+                💡 طريقة تهيئة الجدول في Supabase لإصلاح المشكلة فوراً:
+              </p>
+              <ol className="list-decimal list-inside text-xs space-y-2 text-slate-600 leading-normal pr-1">
+                <li>افتح لوحة تحكم مشروعك في موقع <strong className="text-emerald-700 font-bold">Supabase</strong>.</li>
+                <li>من القائمة الجانبية اليسرى للمشروع، اختر <strong className="text-indigo-600 font-bold">SQL Editor</strong>.</li>
+                <li>اضغط على زر <strong className="text-indigo-600 font-bold">New Query</strong> لفتح محرر استعلام فارغ ومستقل.</li>
+                <li>قم بنسخ كود الـ SQL المكتوب بالأسفل بالكامل، والصقه في المحرر، ثم اضغط على زر <strong className="bg-[#10b981] text-white px-2 py-0.5 rounded text-[10px] font-bold">Run</strong>.</li>
               </ol>
 
               <div className="relative mt-2">
-                <pre className="bg-slate-900 text-slate-100 p-3 rounded-lg text-[10px] sm:text-[11px] font-mono overflow-x-auto text-left leading-normal whitespace-pre">
+                <pre className="bg-slate-950 text-slate-200 p-4 rounded-xl text-[10px] sm:text-[11px] font-mono overflow-x-auto text-left leading-normal whitespace-pre shadow-inner">
 {`-- 1. إنشاء جدول أكواد التفعيل active_keys
 CREATE TABLE public.active_keys (
   id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -533,13 +529,13 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                     setSqlCopied(true);
                     setTimeout(() => setSqlCopied(false), 2000);
                   }}
-                  className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 text-white rounded px-2.5 py-1 text-[10px] sm:text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  className="absolute top-3 right-3 bg-white/10 hover:bg-white/20 text-white rounded-lg px-3 py-1.5 text-[10px] sm:text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
                 >
                   {sqlCopied ? 'تم نسخ الجدول! ✓' : 'نسخ الكود'}
                 </button>
               </div>
-              <p className="text-[10px] text-gray-500 font-light mt-1">
-                * ملاحظة: بمجرد نجاح تشغيل الاستعلام، يمكنك تشغيل واختبار كود التحديث والتفعيل مباشرة بدون أي أخطاء!
+              <p className="text-[10px] text-gray-500 font-light pr-1">
+                * عند نجاح تثبيت الجدول في Supabase، عد إلى هذه الصفحة مباشرة وأدخل كود التجربة <code className="bg-slate-100 text-indigo-700 px-1 rounded font-bold font-mono">MOMEN2026</code> لتجربة باقة الاختبارات فورا وبشكل حي!
               </p>
             </div>
           )}
@@ -549,116 +545,140 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
       {/* Main Transitions Canvas */}
       <AnimatePresence mode="wait">
         
-        {/* VIEW A: Activate Key */}
+        {/* VIEW A: Activate Key with Superb Premium Polish */}
         {toolView === 'activate' && (
           <motion.div
             key="activate-screen"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="w-full max-w-md mx-auto bg-[#F9FAFB] rounded-[36px] border border-gray-100 p-8 flex flex-col relative overflow-hidden select-none"
-            style={{ boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.015)' }}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="w-full max-w-lg mx-auto bg-white rounded-[32px] border border-slate-100 p-8 sm:p-10 flex flex-col relative overflow-hidden shadow-xl shadow-slate-100/60 z-10"
           >
-            {/* Blurry corner decor inspired by the minimalism mockup */}
-            <div className="absolute -top-4 -right-4 w-24 h-24 bg-blue-100 rounded-full blur-3xl opacity-50 pointer-events-none" />
+            {/* Ambient visual overlay inside card */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl opacity-40 pointer-events-none" />
 
-            <div className="w-full bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-6 z-10">
-              <div className="flex items-center justify-between pb-1">
-                <h2 className="font-extrabold text-[#111827] text-lg">تفعيل الأداة</h2>
-                <span className="text-[10px] text-gray-400 font-mono font-bold uppercase tracking-widest">Step 01</span>
+            <div className="space-y-6 relative z-10">
+              
+              {/* Stepper badge */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="space-y-1">
+                  <h2 className="font-extrabold text-slate-900 text-xl flex items-center gap-2">
+                    <Key className="w-5 h-5 text-blue-600 animate-pulse" />
+                    تفعيل باقة الاختبارات
+                  </h2>
+                  <p className="text-xs text-slate-400 font-light">أدخل الرمز المستلم للاستفادة الكاملة من محرك الأسئلة الذكي</p>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-50 border px-2 py-1 rounded-md">Step 01</span>
               </div>
 
-              <form onSubmit={handleVerifyKey} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">كود التفعيل</label>
-                  <div className="flex gap-2">
+              {/* Activation Form with High Contrast Inputs */}
+              <form onSubmit={handleVerifyKey} className="space-y-5">
+                <div className="space-y-2 text-right">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">كود التفعيل المستلم</label>
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <input
                       type="text"
                       required
                       value={activationCode}
                       onChange={(e) => setActivationCode(e.target.value)}
-                      placeholder={useSandbox ? "أدخل DEMO100 للتجربة" : "XXXX-XXXX-XXXX"}
-                      className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-center font-bold tracking-widest text-[#111827] focus:bg-white focus:outline-none focus:border-blue-500 transition-all uppercase placeholder:normal-case placeholder:font-normal placeholder:tracking-normal placeholder:text-gray-300"
+                      placeholder={useSandbox ? "أدخل DEMO100 للتجربة" : "MOMEN2026 أو الكود الخاص بك"}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-center font-mono font-extrabold text-slate-900 tracking-wider text-md focus:bg-white focus:ring-4 focus:ring-blue-100/50 focus:border-blue-500 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-350 outline-none"
                     />
                     <button
                       type="submit"
                       disabled={isVerifying}
-                      className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-5 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-7 py-4 rounded-2xl text-sm font-bold shadow-lg shadow-slate-950/10 hover:shadow-slate-950/20 transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {isVerifying ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          المعالجة...
+                        </>
                       ) : (
-                        'تحقق'
+                        'تفعيل الآن'
                       )}
                     </button>
                   </div>
                 </div>
               </form>
 
-              {/* Verified Badge placeholder illustration */}
+              {/* Dynamic feedback under input */}
               {activationCode.trim() !== '' && (
-                <div className="pt-4 border-t border-dashed border-gray-200">
-                  <div className="p-4 bg-blue-50 rounded-xl flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-sm font-bold">✓</div>
-                    <div>
-                      <div className="text-xs font-bold text-blue-900">تم التعرف على الكود</div>
-                      <div className="text-[10px] text-blue-700">اضغط "تحقق" لتفعيله والاستمرار فوراً</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 pt-2 text-center z-10">
-              <p className="text-xs text-gray-400">
-                ليس لديك كود؟{' '}
-                <button
-                  type="button"
-                  onClick={onBackToLanding}
-                  className="text-blue-600 hover:text-blue-700 hover:underline font-bold transition duration-150 cursor-pointer"
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center gap-3.5"
                 >
-                  انقر لاقتناء باقة تفعيل بـ 19 ريالاً فقط
-                </button>
-              </p>
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-extrabold">
+                    ✓
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-blue-900">الكود جاهز للتحقق الفوري</div>
+                    <div className="text-[10px] text-blue-600/95 font-light">بمجرد الضغط على تفعيل الآن سنقوم بمطابقة الكود وحقن الرصيد.</div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Callout support */}
+              <div className="pt-4 border-t border-dashed border-slate-100 text-center">
+                <p className="text-xs text-slate-500">
+                  لا تملك كود تفعيل؟{' '}
+                  <button
+                    type="button"
+                    onClick={onBackToLanding}
+                    className="text-blue-600 hover:text-blue-700 hover:underline font-bold transition duration-150 cursor-pointer"
+                  >
+                    انقر هنا لاقتناء كود بـ 19 ريالاً فقط
+                  </button>
+                </p>
+              </div>
+
             </div>
           </motion.div>
         )}
 
-        {/* VIEW B: PDF Builder and Quiz Config */}
+        {/* VIEW B: PDF Builder and Quiz Config with High Contrast Bento Design */}
         {toolView === 'builder' && (
           <motion.div
             key="builder-screen"
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
-            className="space-y-6"
+            className="space-y-8 z-10 relative"
           >
-            {/* Instruction Banner - Clean Minimalism */}
-            <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-6">
-              <h2 className="text-lg font-extrabold text-[#111827] mb-1.5 flex items-center gap-2">
-                <span className="w-5.5 h-5.5 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs">✓</span>
-                جاهز لتوليد الاختبار الذكي الأول!
-              </h2>
-              <p className="text-xs sm:text-sm text-gray-500 max-w-2xl leading-relaxed">
-                حدد طريقة تزويد المادة العلمية بالأسفل. يمكنك سحب وإفلات ملازم المذاكرة والكتب بصيغة PDF وسيقوم روبوت الذكاء الاصطناعي ببناء 15 سؤالاً بنموذج الإجابة والتحليل الواضح فوراً بخصم محتسب رصيد واحد.
-              </p>
+            {/* Premium Header Banner */}
+            <div className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
+              <div className="space-y-1.5 text-right flex-1">
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs font-bold">✓</span>
+                  تم تنشيط المفتاح بنجاح!
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-xl font-light leading-relaxed">
+                  أنت الآن جاهز لرفع المادة التعليمية الخاصة بك وبناء الاختبار التفاعلي. مع كل اختبار تولده سيتم احتساب رصيد واحد.
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-2 bg-slate-50 px-4 py-2 border rounded-xl font-medium text-xs text-slate-600 select-none">
+                <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                <span>الحد الحالي: 15 سؤال قياس لكل ملزمة</span>
+              </div>
             </div>
 
-            {/* Selector Input Method */}
-            <div className="flex bg-[#F3F4F6] p-1.5 rounded-xl max-w-sm">
+            {/* Config: Input Method Selector */}
+            <div className="bg-slate-100/50 p-1 rounded-2xl max-w-sm flex border border-slate-200">
               <button
                 onClick={() => setInputMethod('pdf')}
-                className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  inputMethod === 'pdf' ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-blue-600' : 'text-gray-400 hover:text-gray-700'
+                className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                  inputMethod === 'pdf' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <UploadCloud className="w-4 h-4" />
-                رفع ملف PDF
+                تحميل ملف PDF
               </button>
               <button
                 onClick={() => setInputMethod('text')}
-                className={`flex-1 py-2.5 rounded-lg text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  inputMethod === 'text' ? 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.05)] text-blue-600' : 'text-gray-400 hover:text-gray-700'
+                className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
+                  inputMethod === 'text' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <ClipboardType className="w-4 h-4" />
@@ -666,39 +686,43 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
               </button>
             </div>
 
-            {/* Input Form Body */}
-            <div className="bg-white border border-gray-100 rounded-[24px] p-6 min-h-[300px] flex flex-col justify-center">
+            {/* Primary Input Container */}
+            <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 min-h-[340px] flex flex-col justify-center shadow-xs">
               
               {inputMethod === 'pdf' ? (
-                /* PDF Reader Form */
+                /* PDF Loader with Interactive Progress indicator */
                 <div className="space-y-4">
                   {pdfParsingProgress !== null ? (
-                    <div className="text-center py-12 space-y-4">
-                      <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto" />
-                      <div className="space-y-1.5 max-w-xs mx-auto">
-                        <p className="text-sm font-bold text-slate-700">جاري قراءة وتحليل ملف الـ PDF...</p>
-                        <p className="text-xs text-slate-400">استخراج الكلمات العربية من الصفحات بسلاسة</p>
+                    <div className="text-center py-12 space-y-5">
+                      <div className="relative inline-flex items-center justify-center">
+                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center">
+                          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                        </div>
+                      </div>
+                      <div className="space-y-2 max-w-xs mx-auto">
+                        <p className="text-sm font-bold text-slate-850">جاري مسح ومعالجة مستند الـ PDF...</p>
+                        <p className="text-[11px] text-slate-400">نستخرج النصوص العربية بعناية وندرس المفاهيم</p>
                         
-                        {/* Progress Bar Container */}
-                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        {/* Progress Indicator */}
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mt-3">
                           <div 
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                             style={{ width: `${pdfParsingProgress}%` }}
                           />
                         </div>
-                        <span className="text-xs font-mono font-bold text-slate-600">{pdfParsingProgress}%</span>
+                        <span className="text-xs font-mono font-black text-blue-600">{pdfParsingProgress}%</span>
                       </div>
                     </div>
                   ) : uploadedFile ? (
-                    /* Display File Loaded */
-                    <div className="p-6 bg-blue-50/50 border border-blue-100 rounded-xl flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                    /* Display Selected Document Detail */
+                    <div className="p-6 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 text-right">
+                        <div className="p-3.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
                           <FileText className="w-8 h-8" />
                         </div>
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-slate-800 max-w-md truncate">{uploadedFile.name}</p>
-                          <p className="text-xs text-slate-500">حجم الملف: {(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                        <div className="space-y-1">
+                          <p className="font-bold text-slate-900 max-w-md truncate text-sm sm:text-md">{uploadedFile.name}</p>
+                          <p className="text-xs text-slate-400 font-light">الحجم المستكشف: {(uploadedFile.size / (1024 * 1024)).toFixed(2)} ميجابايت • تم سحب المضمون ووضعه رهن التوليد</p>
                         </div>
                       </div>
                       <button
@@ -706,20 +730,20 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                           setUploadedFile(null);
                           setExtractedPdfText('');
                         }}
-                        className="py-1.5 px-3 bg-white border hover:bg-red-50 hover:text-red-600 hover:border-red-100 rounded-lg text-xs font-bold text-slate-500 transition cursor-pointer"
+                        className="py-2 px-4 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-100 rounded-xl text-xs font-bold text-slate-500 transition cursor-pointer shrink-0"
                       >
-                        إلغاء الملف
+                        حذف وتغيير الملف
                       </button>
                     </div>
                   ) : (
-                    /* Dropzone screen - Clean Minimalism dashed button styles */
+                    /* Elegant Dropzone Wrapper */
                     <div
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={handleDrop}
                       onClick={() => fileInputRef.current?.click()}
-                      className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer flex flex-col justify-center items-center ${
-                        isDragging ? 'border-blue-500 bg-blue-50/20' : 'border-gray-200 hover:border-blue-400 hover:bg-gray-50/40'
+                      className={`border-2 border-dashed rounded-[24px] p-12 text-center transition-all cursor-pointer flex flex-col justify-center items-center gap-3.5 ${
+                        isDragging ? 'border-blue-500 bg-blue-50/20 scale-[0.99] shadow-inner' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50/30'
                       }`}
                     >
                       <input
@@ -729,51 +753,53 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                         accept="application/pdf"
                         className="hidden"
                       />
-                      <div className="p-3 bg-blue-50 rounded-full text-blue-600 mb-3">
+                      <div className="p-4 bg-blue-50 rounded-2xl text-blue-600 border border-blue-100/50">
                         <UploadCloud className="w-6 h-6" />
                       </div>
-                      <p className="text-sm font-bold text-[#111827]">اسحب وألقِ ملزمة الـ PDF هنا</p>
-                      <p className="text-xs text-gray-400 mt-1">أو انقر لاختيار الملف من الجهاز</p>
-                      <p className="text-[11px] text-gray-300 mt-3 font-medium">الحد الأقصى للحجم 20 ميجابايت.</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-850">اسحب وألقِ ملزمة الـ PDF هنا لرفعها</p>
+                        <p className="text-xs text-slate-400 font-light">أو انقر لتصفح واختيار الملف من جهازك</p>
+                      </div>
+                      <span className="text-[10px] text-slate-350 font-medium">صيغ مدعومة: PDF فقط (بحد أقصى 20 ميجابايت)</span>
                     </div>
                   )}
                 </div>
               ) : (
-                /* Text Area Form - Clean light styling */
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">أدخل المحتوى العلمي أو التلخيص يدوياً</label>
+                /* Text Area Custom Style */
+                <div className="space-y-3 text-right">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">محتوى المادة العلمية</label>
                   <textarea
                     rows={8}
                     value={manualText}
                     onChange={(e) => setManualText(e.target.value)}
-                    placeholder="ألصق شرح الدرس هنا... يرجى توفير نص علمي كافٍ (نحو صفحة واحدة على الأقل) للحصول على أفضل توليد ممكن."
-                    className="w-full p-4 bg-gray-50/40 border border-gray-150 focus:bg-white rounded-xl text-sm leading-relaxed outline-none focus:border-blue-500 transition-all resize-none placeholder:text-gray-300 text-slate-800"
+                    placeholder="ألصق هنا نصوص الدرس، الشروحات، أو الملاحظات التي ترغب بصياغة الاختبار منها..."
+                    className="w-full p-5 bg-slate-50/50 border border-slate-150 focus:bg-white rounded-2xl text-sm leading-relaxed outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-500 transition-all resize-none placeholder:text-slate-300 text-slate-800"
                   />
-                  <div className="flex items-center justify-between text-[11px] text-gray-400">
-                    <span>الحد المقترح: حتى 50,000 حرف</span>
-                    <span>عدد الحروف المدخلة: {manualText.length} حرفاً</span>
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium font-mono">
+                    <span>الحد الأقصى المدعوم: 50,000 حرف</span>
+                    <span>عدد الحروف المدخلة حالياً: {manualText.length} حرفاً</span>
                   </div>
                 </div>
               )}
 
             </div>
 
-            {/* Command Trigger Zone - Dark Minimalist Button */}
-            <div className="flex items-center justify-end">
+            {/* Generate Trigger Button */}
+            <div className="flex items-center justify-end z-10 relative">
               <button
                 onClick={handleGenerateQuiz}
                 disabled={isGenerating || pdfParsingProgress !== null}
-                className="w-full sm:w-auto px-10 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-gray-100 transition duration-200 disabled:opacity-50 flex items-center justify-center gap-2.5 cursor-pointer"
+                className="w-full sm:w-auto px-10 py-4.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-slate-200 transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2.5 cursor-pointer max-w-sm sm:max-w-none text-sm sm:text-md"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    جاري توليد الاختبار بالكامل خلال 30 ثانية...
+                    جاري صياغة الأسئلة بدقة (30 ثانية)...
                   </>
                 ) : (
                   <>
-                    <Cpu className="w-5 h-5" />
-                    توليد الاختبار الآن (خصم 1 رصيد)
+                    <Cpu className="w-5 h-5 text-indigo-400" />
+                    توليد الاختبار الذكي الآن (سحب 1 محاولة)
                   </>
                 )}
               </button>
@@ -788,52 +814,56 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
-            className="space-y-8"
+            className="space-y-8 z-10 relative"
           >
             
-            {/* Header / Submission Score banner */}
+            {/* Header Evaluation panel */}
             {quizSubmitted ? (
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-8 text-center space-y-4">
-                <div className="w-[84px] h-[84px] bg-white rounded-full flex items-center justify-center mx-auto shadow-md border border-blue-100">
-                  <Award className="w-12 h-12 text-blue-600" />
+              <div className="bg-white border border-slate-100 rounded-[32px] p-8 text-center space-y-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-500" />
+                <div className="w-[88px] h-[88px] bg-slate-50 rounded-full flex items-center justify-center mx-auto border border-slate-100 mb-2">
+                  <Award className="w-12 h-12 text-blue-600 animate-bounce" />
                 </div>
-                <div className="space-y-1.5">
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-800">اكتمل التقييم وتصحيح الإجابات!</h2>
-                  <p className="text-sm text-slate-500">تم مراجعة إجاباتك ومقارنتها بالإجابات النموذجية المستخلصة ببراعة.</p>
+                <div className="space-y-2">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900">اكتمل التقييم وتصحيح الإجابات بنجاح!</h2>
+                  <p className="text-xs sm:text-sm text-slate-500 max-w-2xl mx-auto font-light leading-relaxed">
+                    تمت معالجة الخيارات المحددة ومقارنتها بدقة وتفصيل مع النموذج الفكري المحكم للذكاء الاصطناعي.
+                  </p>
                 </div>
-                <div className="inline-block py-2 px-6 bg-white rounded-full border border-blue-200/60 shadow-xs">
-                  <span className="text-md text-slate-600 font-bold">
-                    النتيجة النهائية: <span className="text-2xl font-black text-blue-600 px-1 font-mono">{quizScore}</span> من <span className="font-mono text-slate-700">15</span>
+                
+                <div className="inline-block py-2.5 px-8 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-xs">
+                  <span className="text-xs sm:text-sm font-bold text-blue-900">
+                    النتيجة النهائية: <span className="text-2xl font-extrabold text-blue-600 font-mono px-1">{quizScore}</span> من <span className="font-mono text-slate-700">15</span>
                   </span>
                 </div>
                 
-                {/* Visual evaluation statement */}
+                {/* Visual score statement */}
                 <div className="pt-2">
-                  <p className="text-xs text-slate-500">
-                    {quizScore >= 13 ? '🏆 أداء استثنائي رائع! أنت تتقن المادة العلمية بالكامل.' :
-                     quizScore >= 9 ? '👍 أداء جيد جداً! لديك فهم عميق مع بضعة نقاط بسيطة للتحسين.' :
-                     '📖 فرصة مثالية للمراجعة! راجع التفسيرات والتفسير التفصيلي لكل سؤال أسفله.'}
+                  <p className="text-xs text-slate-500 font-medium">
+                    {quizScore >= 13 ? '🏆 أداء استثنائي مذهل! يظهر فهمك المتكامل والعميق للمحتوى.' :
+                     quizScore >= 9 ? '👍 مستوى رائع وجيد جداً! لديك عدد قليل جداً من الفجوات البسيطة.' :
+                     '📖 فرصة قيمة ومثمرة للمذاكرة ومراجعة التفسيرات الموضحة أسفل كل سؤال للأخطاء.'}
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-1.5">
-                    <BookOpen className="w-5 h-5 text-indigo-500" />
-                    اختبار قياس الذاتي الفوري
+              <div className="bg-white border border-slate-100 p-6 rounded-[24px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+                <div className="space-y-1 text-right">
+                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-600" />
+                    اختبار الفهم والتحليل الذاتي فوري
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    قم بحل الـ 15 سؤالاً التالية بالكامل ثم انقر على "تصحيح الاختبار" بأخر الصفحة لعرض الدرجة.
+                  <p className="text-xs text-slate-400 font-light">
+                    أجب على جميع الأسئلة قياسية الاختيارات بالأسفل، ثم انقر على "مراجعة وتصحيح" لاستعراض تقديرك.
                   </p>
                 </div>
-                <div className="shrink-0 bg-white border text-xs font-semibold px-3 py-1.5 rounded-lg text-slate-600">
-                  الأسئلة المجابة: {Object.keys(userAnswers).length} / 15
+                <div className="shrink-0 bg-slate-50 border px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 font-mono">
+                  الأسئلة المحلولة: {Object.keys(userAnswers).length} / 15
                 </div>
               </div>
             )}
 
-            {/* Questions List Render */}
+            {/* Questions Container List */}
             <div className="space-y-6">
               {questions.map((q, qIdx) => {
                 const selectedAns = userAnswers[qIdx];
@@ -843,43 +873,43 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                   <div 
                     key={qIdx}
                     id={`quiz-question-card-${qIdx}`}
-                    className={`bg-white border rounded-2xl p-6 transition-all shadow-xs ${
+                    className={`bg-white border rounded-[24px] p-6 sm:p-8 transition-all shadow-xs ${
                       quizSubmitted 
                         ? isCorrect 
                           ? 'border-emerald-200 bg-emerald-50/5' 
                           : 'border-red-200 bg-red-50/5'
-                        : 'border-slate-150 hover:shadow-md'
+                        : 'border-slate-100 hover:border-slate-200 hover:shadow-xs'
                     }`}
                   >
-                    {/* Header: Question Text */}
-                    <div className="flex items-start gap-4 mb-4">
-                      <span className="w-7 h-7 bg-slate-100 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center shrink-0">
+                    {/* Topic/Number Indicator */}
+                    <div className="flex items-start gap-4 mb-4 text-right">
+                      <span className="w-8 h-8 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center shrink-0">
                         {qIdx + 1}
                       </span>
-                      <h3 className="font-bold text-slate-800 text-sm sm:text-md pt-0.5 leading-relaxed">
+                      <h3 className="font-extrabold text-slate-850 text-sm sm:text-md pt-1 leading-relaxed">
                         {q.question}
                       </h3>
                     </div>
 
-                    {/* Options Body */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-11">
+                    {/* Interactive Choices Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-0 sm:mr-12">
                       {q.options.map((option, optIdx) => {
                         const isThisSelected = selectedAns === option;
                         const isThisCorrect = option === q.correctAnswer;
                         
-                        // Color styling logic after submission
-                        let optionStyle = 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700';
+                        // Option Styling State Logic
+                        let optionStyle = 'border-slate-200 bg-slate-50/80 hover:bg-slate-100 text-slate-700';
                         if (isThisSelected) {
-                          optionStyle = 'border-blue-500 bg-blue-50 text-blue-900';
+                          optionStyle = 'border-blue-500 bg-blue-50/50 text-blue-900 font-bold';
                         }
                         
                         if (quizSubmitted) {
                           if (isThisCorrect) {
-                            optionStyle = 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold';
+                            optionStyle = 'border-emerald-500 bg-emerald-50 text-emerald-900 font-extrabold';
                           } else if (isThisSelected) {
-                            optionStyle = 'border-red-500 bg-red-50 text-red-900';
+                            optionStyle = 'border-red-400 bg-red-50 text-red-900';
                           } else {
-                            optionStyle = 'border-slate-100 bg-slate-50/40 opacity-70 text-slate-400';
+                            optionStyle = 'border-slate-100 bg-slate-50/20 opacity-60 text-slate-400';
                           }
                         }
 
@@ -888,25 +918,26 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                             key={optIdx}
                             disabled={quizSubmitted}
                             onClick={() => handleSelectOption(qIdx, option)}
-                            className={`p-3 border rounded-xl text-right text-xs sm:text-sm transition-all focus:outline-none flex items-center justify-between ${optionStyle} ${
-                              !quizSubmitted ? 'cursor-pointer hover:scale-101' : ''
+                            className={`p-4 border rounded-2xl text-right text-xs sm:text-sm transition-all flex items-center justify-between outline-none ${optionStyle} ${
+                              !quizSubmitted ? 'cursor-pointer hover:-translate-y-0.5 active:scale-99' : ''
                             }`}
+                            style={{ minHeight: '48px' }}
                           >
-                            <span className="flex-1 pr-1">{option}</span>
+                            <span className="flex-1 pr-1 font-medium">{option}</span>
                             
-                            {/* Option Checkbox indicators */}
+                            {/* Boolean visual check indicator */}
                             <div className="shrink-0 pl-1">
                               {quizSubmitted ? (
                                 isThisCorrect ? (
-                                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                  <CheckCircle className="w-4.5 h-4.5 text-emerald-600" />
                                 ) : isThisSelected ? (
-                                  <XCircle className="w-4 h-4 text-red-500" />
+                                  <XCircle className="w-4.5 h-4.5 text-red-500" />
                                 ) : null
                               ) : (
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
                                   isThisSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
                                 }`}>
-                                  {isThisSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                  {isThisSelected && <div className="w-1.5 h-1.5 bg-white rounded-full animate-scale" />}
                                 </div>
                               )}
                             </div>
@@ -915,18 +946,18 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                       })}
                     </div>
 
-                    {/* Explanatory feedback */}
+                    {/* Explanatory Scientific Help Feedback */}
                     {quizSubmitted && (
-                      <div className="mt-4 mr-11 pt-4 border-t border-dashed border-slate-100 space-y-2">
-                        <div className={`p-4 rounded-xl flex items-start gap-2.5 text-xs sm:text-sm ${
-                          isCorrect ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'
+                      <div className="mt-5 mr-0 sm:mr-12 pt-4 border-t border-dashed border-slate-150">
+                        <div className={`p-4 rounded-2xl flex items-start gap-3 text-xs sm:text-sm ${
+                          isCorrect ? 'bg-emerald-50/70 text-emerald-900' : 'bg-red-50/70 text-red-900'
                         }`}>
-                          <Info className={`w-4 h-4 shrink-0 mt-0.5 ${isCorrect ? 'text-emerald-600' : 'text-red-500'}`} />
-                          <div className="space-y-1">
-                            <p className="font-bold flex items-center gap-1">
-                              {isCorrect ? 'إجابة صحيحة!' : `للأسف، الإجابة غير دقيقة. الإجابة الصحيحة هي: "${q.correctAnswer}"`}
+                          <Info className={`w-4 h-4 shrink-0 mt-0.5 ${isCorrect ? 'text-emerald-700' : 'text-red-650'}`} />
+                          <div className="space-y-1.5 text-right">
+                            <p className="font-bold">
+                              {isCorrect ? 'رائع، إجابة صحيحة ومثالية!' : `للأسف إجابة خاطئة. الخيار الصحيح هو: "${q.correctAnswer}"`}
                             </p>
-                            <p className="text-slate-600 font-light leading-relaxed">{q.explanation}</p>
+                            <p className="text-slate-650 font-light leading-relaxed">{q.explanation}</p>
                           </div>
                         </div>
                       </div>
@@ -940,31 +971,31 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
             {/* Bottom Actions Form */}
             <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
               {quizSubmitted ? (
-                /* Post-Submission reset options */
+                /* Clear for next quiz generation */
                 <>
-                  <p className="text-xs text-slate-400">
-                    يمكنك اختيار توليد اختبار رائع آخر بخصم رصيد واحد إضافي من سلة الرصيد.
+                  <p className="text-xs text-slate-400 font-light text-right">
+                    لقد تمت مراجعة المادة واكتمل التقييم. يمكنك توليد اختبار آخر جديد بخصم 1 محاولة من الرصيد النشط.
                   </p>
                   <button
                     onClick={handleResetForNewQuiz}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-blue-100"
                   >
                     <RefreshCw className="w-4 h-4" />
-                    توليد اختبار جديد من ملزمة أخرى
+                    توليد اختبار ذكي جديد
                   </button>
                 </>
               ) : (
                 /* Perform correction request */
                 <>
-                  <p className="text-xs text-slate-400">
-                    تأكد من اختيار الخيارات الأنسب لجميع الأسئلة قبل إجراء التصحيح التلقائي.
+                  <p className="text-xs text-slate-400 font-light text-right">
+                    ننصحك بالتحقق من مراجعة وتفقد الخيارات لجميع الـ 15 سؤالاً بالكامل قبل اعتماد التصحيح.
                   </p>
                   <button
                     onClick={handleCorrectQuiz}
-                    className="w-full sm:w-auto px-10 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/20 transition cursor-pointer flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-10 py-4.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-2 text-sm sm:text-md"
                   >
                     <CheckCircle2 className="w-5 h-5 fill-white text-emerald-600" />
-                    تصحيح الاختبار بالكامل وعرض النتيجة
+                    مراجعة وتصحيح الاختبار بالكامل وعرض النتيجة
                   </button>
                 </>
               )}
