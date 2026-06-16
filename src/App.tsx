@@ -15,7 +15,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
   
   // Settings / Environment Configurations
-  const [paymentLink, setPaymentLink] = useState('https://salla.sa/your-pay-page-placeholder');
+  const [paymentLink, setPaymentLink] = useState('https://whop.com/checkout/4lbqzFI5cMVO8Rd8ch-MLnc-G9Fr-7Sro-K34TysgbiS4J/');
   const [customGeminiKey, setCustomGeminiKey] = useState('');
   const [useSandbox, setUseSandbox] = useState(false); // Disabled by default to connect to the live Supabase database!
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>({
@@ -30,7 +30,11 @@ export default function App() {
     const savedSupaUrl = localStorage.getItem('SUPA_URL');
     const savedSupaKey = localStorage.getItem('SUPA_KEY');
 
-    if (savedLink) setPaymentLink(savedLink);
+    if (savedLink && 
+        savedLink !== 'https://salla.sa/your-pay-page-placeholder' && 
+        savedLink !== 'https://whop.com/5-pdf/7c63b963-c7b5-4776-ae87-2d3d6ef96292') {
+      setPaymentLink(savedLink);
+    }
     if (savedSandbox !== null) setUseSandbox(savedSandbox === 'true');
     if (savedSupaUrl && savedSupaKey) {
       setSupabaseConfig({ url: savedSupaUrl, anonKey: savedSupaKey });
