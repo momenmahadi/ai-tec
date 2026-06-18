@@ -40,8 +40,10 @@ function getAiClient(): GoogleGenAI {
 }
 
 // Fallback function to generate 15 high-quality academic questions when the AI API fails
-function getFallbackQuiz(): any[] {
-  return [
+function getFallbackQuiz(): { summary: string, questions: any[] } {
+  return {
+    summary: "ملخص المساق العام والمستوى المرجعي المضمّن: يمثل هذا بنك الأسئلة المرجعي الشامل وعالي الجودة للعلوم والمعارف والرياضيات واللغة العربية لضمان جاهزية المنصة بشكل فوري وموثوق.",
+    questions: [
     {
       question: "ما هو المكون الأساسي للنواة المسؤول عن تخزين المعلومات الوراثية في الخلايا الحية؟",
       options: [
@@ -207,7 +209,8 @@ function getFallbackQuiz(): any[] {
       correctAnswer: "القاهرة",
       explanation: "القاهرة هي العاصمة التاريخية لجمهورية مصر العربية، وتعد أكبر مدينة في العالم العربي وأفريقيا من حيث الكثافة السكانية."
     }
-  ];
+    ]
+  };
 }
 
 // REST API endpoint to generate quiz questions using Gemini API
@@ -238,52 +241,60 @@ app.post('/api/quiz/generate', async (req, res) => {
       return;
     }
 
-    const systemPrompt = `You are an expert educational content writer. 
-Analyze the provided Arabic study material text and write exactly 15 high-quality, professional multiple-choice questions (MCQs) in Arabic.
-Each question must have exactly 4 choices/options, 1 correct option (which must match exactly one of the options text), and a detailed educational explanation in Arabic.
-Make sure the language is clear, precise, and educational.`;
+    const systemPrompt = `You are an expert academic educator and educational content writer. Your task consists of these strict steps:
+1. Thoroughly read and analyze the provided Arabic source text extracted from all pages of the PDF. Avoid any corrupted, duplicated, or incorrectly parsed text.
+2. Write a precise, high-quality, professional educational summary of the PDF content in Arabic (3 to 6 comprehensive sentences) outlining the core topics, facts, and definitions.
+3. Then, generate exactly 15 high-quality multiple-choice questions (MCQs) in Arabic.
+4. IMPORTANT: Verify that every single generated question is 100% relevant to the PDF content, that its answer is fully verifiable within the PDF text, and that it contains NO external assumptions or unrelated concepts.
+5. Each question must have exactly 4 options, 1 correct option (matching exactly one of the options text), and a detailed educational explanation in Arabic.`;
 
-    const instructions = `اقرأ النص التالي واستخرج منه 15 سؤال خيارات متعددة بصيغة JSON.
-يجب أن يحتوي كل سؤال على الحقول التالية:
-- question: نص السؤال باللغة العربية.
-- options: مصفوفة تحتوي على 4 خيارات مختلفة بالضبط باللغة العربية.
-- correctAnswer: الإجابة الصحيحة بالضبط (يجب أن تطابق حرفياً أحد الخيارات الأربعة الموجودة في مصفوفة options).
-- explanation: شرح وتفسير مفصل للإجابة الصحيحة باللغة العربية لمساعدة الطالب على الفهم.
+    const instructions = `اقرأ كامل النص المصدري المرفق وأكمل الخطوات المطلوبة بإنتاج كائن JSON منظم يحتوي على ملخص دقيق ومترابط للمحتوى (summary)، يليه 15 سؤال اختيار من متعدد (questions) مبنية عليه حرفياً دون أي تخمين أو افتراض خارجي. تحقق أن كل سؤال مبرهن في النص المرفق.
 
-النص المصدري:\n\n${text.substring(0, 50000)}`; // limit size to safety
+النص المصدري المستخرج من الملف:
+\n\n${text.substring(0, 50000)}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.1-flash',
       contents: instructions,
       config: {
         systemInstruction: systemPrompt,
         responseMimeType: 'application/json',
         responseSchema: {
-          type: Type.ARRAY,
-          description: "List of 15 multiple choice questions.",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question: {
-                type: Type.STRING,
-                description: "The Arabic question string."
-              },
-              options: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Exactly 4 options in Arabic."
-              },
-              correctAnswer: {
-                type: Type.STRING,
-                description: "The correct Arabic option string. Must match one of the options elements exactly."
-              },
-              explanation: {
-                type: Type.STRING,
-                description: "A detailed explanation of why the answer is correct and educational context."
-              }
+          type: Type.OBJECT,
+          properties: {
+            summary: {
+              type: Type.STRING,
+              description: "A short, precise academic summary (3-6 sentences in Arabic) of the extracted PDF text."
             },
-            required: ['question', 'options', 'correctAnswer', 'explanation']
-          }
+            questions: {
+              type: Type.ARRAY,
+              description: "List of exactly 15 high-quality multiple choice questions based strictly on the text and double-verified against it.",
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: {
+                    type: Type.STRING,
+                    description: "The Arabic question string."
+                  },
+                  options: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "Exactly 4 options in Arabic."
+                  },
+                  correctAnswer: {
+                    type: Type.STRING,
+                    description: "The correct Arabic option string. Must match one of the options elements exactly."
+                  },
+                  explanation: {
+                    type: Type.STRING,
+                    description: "A detailed explanation of why the answer is correct and educational context referencing the PDF content."
+                  }
+                },
+                required: ['question', 'options', 'correctAnswer', 'explanation']
+              }
+            }
+          },
+          required: ['summary', 'questions']
         }
       }
     });

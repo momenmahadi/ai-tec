@@ -74,28 +74,38 @@ export default function App() {
       />
 
       {/* Styled Premium Header - Clean Minimalism */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-gray-100/80 px-8 sm:px-12 py-5 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100 px-6 sm:px-12 py-4 flex items-center justify-between">
         <div 
           onClick={() => setCurrentView('landing')}
-          className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition select-none"
+          className="flex items-center gap-3.5 cursor-pointer hover:opacity-90 transition select-none group"
         >
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <div className="w-4 h-4 border-2 border-white rounded-full"></div>
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-600/15 group-hover:scale-105 transition duration-200">
+            <BrainCircuit className="w-5.5 h-5.5 text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 leading-none">مُعلِّـم الذكي</h1>
+          <div className="text-right">
+            <h1 className="text-lg font-black tracking-tight text-slate-900 leading-none">مُعلِّـم الذكي</h1>
+            <p className="text-[10px] text-slate-400 font-medium">الذكاء الاصطناعي الأكاديمي</p>
           </div>
         </div>
 
         {/* Global Action Links */}
-        <div className="flex items-center gap-8 text-sm font-medium">
+        <div className="flex items-center gap-8 text-sm font-semibold">
           <button
             onClick={() => setCurrentView('landing')}
-            className={`transition cursor-pointer ${
-              currentView === 'landing' ? 'text-blue-600 font-bold' : 'text-gray-400 hover:text-blue-600'
+            className={`transition cursor-pointer text-xs sm:text-sm ${
+              currentView === 'landing' ? 'text-indigo-600' : 'text-slate-400 hover:text-indigo-650'
             }`}
           >
-            الرئيسية
+            تصفح الرئيسية
+          </button>
+          
+          <button
+            onClick={() => setCurrentView('tool')}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition duration-200 cursor-pointer ${
+              currentView === 'tool' ? 'bg-indigo-600 text-white shadow-md' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            الذهاب للأداة
           </button>
         </div>
       </header>

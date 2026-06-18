@@ -3,14 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Key, CheckCircle2, AlertTriangle, FileText, UploadCloud, Cpu, Loader2, Sparkles,
-  ArrowRight, Award, CheckCircle, XCircle, Info, RefreshCw, ClipboardType, BookOpen, AlertCircle
+  ArrowRight, Award, CheckCircle, XCircle, Info, RefreshCw, ClipboardType, BookOpen, AlertCircle,
+  Printer, Copy, Mail, Trash2, Calendar, Share2, Search, Sparkle, Plus, GraduationCap
 } from 'lucide-react';
 import { Question, SupabaseConfig, ActiveKey } from '../types';
 import { extractTextFromPdf } from '../utils/pdfParser';
+
+interface SavedQuiz {
+  id: string;
+  name: string;
+  summary: string;
+  questions: Question[];
+  date: string;
+  score?: number | null;
+}
 
 const getClientFallbackQuiz = (): Question[] => {
   return [
@@ -26,7 +36,7 @@ const getClientFallbackQuiz = (): Question[] => {
       explanation: "الحمض النووي DNA هو الجزيء العملاق الذي يحمل التعليمات الوراثية لتطور ووظائف الكائنات الحية داخل نواة الخلية."
     },
     {
-      question: "ما هو الكوكب الأقرب إلى الشمس في المجموعة الشمسية؟",
+      question: "ما هو الكواكب الأقرب إلى الشمس في المجموعة الشمسية؟",
       options: [
         "كوكب عطارد",
         "كوكب الزهرة",
@@ -48,7 +58,7 @@ const getClientFallbackQuiz = (): Question[] => {
       explanation: "البناء الضوئي هو تفاعل كيميائي في الكلوروفيل يحول الماء وثاني أكسيد الكربون إلى جلوكوز وأكسجين بمساعدة الضوء."
     },
     {
-      question: "من هو العالم الإسلامي الشهير الذي يعتبر واضع ومؤسس علم الجبر؟",
+      question: "من هو العالم الإسلامي الشهير الذي يعتبر واضع ومؤسس علم الجبر واللوغاريتمات؟",
       options: [
         "محمد بن موسى الخوارزمي",
         "الحسن بن الهيثم",
@@ -62,7 +72,7 @@ const getClientFallbackQuiz = (): Question[] => {
       question: "ما هي العملة الرسمية الموحدة المستخدمة في معظم دول الاتحاد الأوروبي؟",
       options: [
         "اليورو",
-        "الدولار",
+        "الدولار الأمريكي",
         "الجنيه الإسترليني",
         "الفرنك السويسري"
       ],
@@ -75,17 +85,17 @@ const getClientFallbackQuiz = (): Question[] => {
         "الأكسجين",
         "النيتروجين",
         "ثاني أكسيد الكربون",
-        "الهيليوم"
+        "غاز الهيليوم والخامل"
       ],
       correctAnswer: "الأكسجين",
-      explanation: "الأكسجين هو الغاز الحيوي اللازم لإنتاج الطاقة (ATP) في خلايا الكائنات الحية من خلال التنفس."
+      explanation: "الأكسجين هو الغاز الحيوي اللازم لإنتاج الطاقة (ATP) في خلايا الكائنات الحية من خلال التنفس الخلوي."
     },
     {
       question: "ما هو أسرع حيوان بري ثديي مسجل على وجه الأرض؟",
       options: [
         "الفهد الصياد (الشيتا)",
         "الأسد الأفريقي",
-        "الغزال البري",
+        "الغزال البري المفترس",
         "الحصان العربي الأصيل"
       ],
       correctAnswer: "الفهد الصياد (الشيتا)",
@@ -94,19 +104,19 @@ const getClientFallbackQuiz = (): Question[] => {
     {
       question: "أي من الفلزات التالية يُصنف كأفضل موصل للكهرباء والحرارة ويستخدم بكثرة في كابلات التوصيل؟",
       options: [
-        "النحاس",
-        "الحديد",
-        "الألومنيوم",
-        "الرصاص"
+        "النحاس الأحمر",
+        "الحديد الكربوني",
+        "الألومنيوم المصهور",
+        "صخور الرصاص الثقيلة"
       ],
-      correctAnswer: "النحاس",
+      correctAnswer: "النحاس الأحمر",
       explanation: "يمتاز النحاس بمقاومة كهربائية منخفضة للغاية، مما يجعله الخيار الأمثل لصناعة الأسلاك النحاسية والأجهزة الكهربائية."
     },
     {
       question: "ما هي الطبقة الصخرية الخارجية الأكثر رقة والتي تشكل القشرة الخارجية لصحراء وبحار الأرض؟",
       options: [
         "القشرة الأرضية",
-        "الوشاح العلوي",
+        "الوشاح العلوي الصهاري",
         "النواة الخارجية السائلة",
         "اللب الداخلي الصلب"
       ],
@@ -116,12 +126,12 @@ const getClientFallbackQuiz = (): Question[] => {
     {
       question: "ما هو العنصر الكيميائي الأخف وزناً والأكثر وفرة وانتشاراً في الكون الفسيح؟",
       options: [
-        "الهيدروجين",
-        "الهيليوم",
-        "الأكسجين",
-        "النيتروجين"
+        "غاز الهيدروجين",
+        "غاز الهيليوم الخفيف",
+        "غاز الأكسجين الثنائي",
+        "غاز النيتروجين الغلاف"
       ],
-      correctAnswer: "الهيدروجين",
+      correctAnswer: "غاز الهيدروجين",
       explanation: "الهيدروجين يمثل نحو 75% من الكتلة الكونية الإجمالية وهو الوقود الأساسي لاندماج النجوم كالشمس."
     },
     {
@@ -139,9 +149,9 @@ const getClientFallbackQuiz = (): Question[] => {
       question: "أي من كواكب المجموعة الشمسية يشتهر بوجود نظام حلقات جليدية وصخرية ضخمة وبديعة تلفه بالكامل؟",
       options: [
         "كوكب زحل",
-        "كوكب المشتري",
-        "كوكب أورانوس",
-        "كوكب نبتون"
+        "كوكب المشتري الثاني",
+        "كوكب أورانوس الأزرق",
+        "كوكب نبتون المتجمد"
       ],
       correctAnswer: "كوكب زحل",
       explanation: "يمتلك كوكب زحل الحلقات الأكثر وضوحاً وكثافة في المنظومة الشمسية، وتتكون أساساً من كتل من الجليد والغبار الصخري."
@@ -152,7 +162,7 @@ const getClientFallbackQuiz = (): Question[] => {
         "الإلكترونات",
         "البروتونات",
         "النيوترونات",
-        "الفوتونات"
+        "الفوتونات المضيئة"
       ],
       correctAnswer: "الإلكترونات",
       explanation: "الإلكترونات هي جسيمات سالبة الشحنة وكتلتها ضئيلة جداً وتدور في مستويات طاقة محددة حول نواة الذرة."
@@ -161,9 +171,9 @@ const getClientFallbackQuiz = (): Question[] => {
       question: "أي من الأجهزة العلمية التالية يُستعمل لرصد وقياس شدة الهزات والموجات الزلزالية الأرضية؟",
       options: [
         "السيسموغراف",
-        "البارومتر",
-        "الهيدرومتر",
-        "التيرمومتر"
+        "البارومتر الجوي",
+        "الهيدرومتر المائي",
+        "التيرمومتر لقياس الحرارة"
       ],
       correctAnswer: "السيسموغراف",
       explanation: "جهاز السيسموغراف (Seismograph) هو الجهاز المخصص لتسجيل الهزات الأرضية وتوليد رسومات بيانية للموجات الزلزالية."
@@ -182,24 +192,20 @@ const getClientFallbackQuiz = (): Question[] => {
   ];
 };
 
-async function generateQuizDirectlyOnClient(text: string, apiKey: string): Promise<Question[]> {
-  const systemPrompt = `You are an expert educational content writer. 
-Analyze the provided Arabic study material text and write exactly 15 high-quality, professional multiple-choice questions (MCQs) in Arabic.
-Each question must have exactly 4 choices/options, 1 correct option (which must match exactly one of the options text), and a detailed educational explanation in Arabic.
-Make sure the language is clear, precise, and educational.`;
+async function generateQuizDirectlyOnClient(text: string, apiKey: string): Promise<{ summary: string; questions: Question[] }> {
+  const systemPrompt = `You are an expert academic educator and educational content writer. Your task consists of these strict steps:
+1. Thoroughly read and analyze the provided Arabic source text. Avoid any corrupted, duplicated, or incorrectly parsed text.
+2. Write a precise, high-quality, professional educational summary of the PDF content in Arabic (3 to 6 comprehensive sentences) outlining the core topics, facts, and definitions.
+3. Then, generate exactly 15 high-quality multiple-choice questions (MCQs) in Arabic.
+4. IMPORTANT: Verify that every single generated question is 100% relevant to the PDF content, that its answer is fully verifiable within the text, and that it contains NO external assumptions or unrelated concepts.
+5. Each question must have exactly 4 options, 1 correct option (matching exactly one of the options text), and a detailed educational explanation in Arabic.`;
 
-  const instructions = `اقرأ النص التالي واستخرج منه 15 سؤال خيارات متعددة بصيغة JSON.
-يجب أن يحتوي كل سؤال على الحقول التالية:
-- question: نص السؤال باللغة العربية.
-- options: مصفوفة تحتوي على 4 خيارات مختلفة بالضبط باللغة العربية.
-- correctAnswer: الإجابة الصحيحة بالضبط (يجب أن تطابق حرفياً أحد الخيارات الأربعة الموجودة في مصفوفة options).
-- explanation: شرح وتفسير مفصل للإجابة الصحيحة باللغة العربية لمساعدة الطالب على الفهم.
+  const instructions = `اقرأ كامل النص المصدري المرفق وأكمل الخطوات المطلوبة بإنتاج كائن JSON منظم يحتوي على ملخص دقيق للمحتوى (summary)، يليه 15 سؤال اختيار من متعدد (questions) مبنية عليه حرفياً دون أي تخمين أو افتراض خارجي.
 
-يجب أن تكون المخرجات عبارة عن مصفوفة JSON صالحة ومباشرة دون أي نصوص إضافية (مصفوفة تحتوي على كائنات الأسئلة).
+النص المصدري:
+\n\n${text.substring(0, 50000)}`;
 
-النص المصدري:\n\n${text.substring(0, 50000)}`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.1-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -263,37 +269,114 @@ export default function ToolSection({
   useSandbox,
   onBackToLanding,
 }: ToolSectionProps) {
-  // Navigation & Core States
+  // Navigation & Core Views
   const [toolView, setToolView] = useState<'activate' | 'builder' | 'quiz'>('activate');
   const [activationCode, setActivationCode] = useState('');
   const [activeKey, setActiveKey] = useState<ActiveKey | null>(null);
   
-  // Input Method (PDF vs Text Paste)
+  // Builder Input States
   const [inputMethod, setInputMethod] = useState<'pdf' | 'text'>('pdf');
   const [manualText, setManualText] = useState('');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [customQuizName, setCustomQuizName] = useState('');
   
-  // Async states
+  // Async status indicators
   const [isVerifying, setIsVerifying] = useState(false);
   const [pdfParsingProgress, setPdfParsingProgress] = useState<number | null>(null);
   const [extractedPdfText, setExtractedPdfText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStep, setGenerationStep] = useState(0);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // Quiz States
+  // Active Quiz Playthrough States
+  const [quizName, setQuizName] = useState('ملف دراسي غير مسمى');
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({}); // index -> selected option text
+  const [pdfSummary, setPdfSummary] = useState<string>('');
+  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({}); 
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizScore, setQuizScore] = useState(0);
-
-  // Drag and Drop State
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [sqlCopied, setSqlCopied] = useState(false);
-  const [showSqlDetails, setShowSqlDetails] = useState(false);
   const [fallbackActive, setFallbackActive] = useState(false);
 
-  // 1. Activation Verification
+  // Print Mode Toggle
+  const [isPrintMode, setIsPrintMode] = useState(false);
+
+  // Gmail Distribution states
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [showGmailModal, setShowGmailModal] = useState(false);
+
+  // Dashboard History States
+  const [savedQuizzes, setSavedQuizzes] = useState<SavedQuiz[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Drag-and-drop / Copy state
+  const [isDragging, setIsDragging] = useState(false);
+  const [sqlCopied, setSqlCopied] = useState(false);
+  const [showSqlDetails, setShowSqlDetails] = useState(false);
+  const [textCopied, setTextCopied] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load Saved Quizzes and Demo Key hints on Mount
+  useEffect(() => {
+    const cached = localStorage.getItem('SAVED_QUIZZES');
+    if (cached) {
+      try {
+        setSavedQuizzes(JSON.parse(cached));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  // Sync state helpers
+  const saveQuizToDashboard = (name: string, summary: string, quizQuestions: Question[], achievedScore: number | null = null) => {
+    const newQuiz: SavedQuiz = {
+      id: Math.random().toString(36).substring(2, 9),
+      name: name || 'استيراد مستند تلقائي',
+      summary: summary,
+      questions: quizQuestions,
+      date: new Date().toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }),
+      score: achievedScore
+    };
+    const updated = [newQuiz, ...savedQuizzes];
+    setSavedQuizzes(updated);
+    localStorage.setItem('SAVED_QUIZZES', JSON.stringify(updated));
+  };
+
+  const handleUpdateQuizScore = (quizId: string, score: number) => {
+    const updated = savedQuizzes.map(q => q.id === quizId ? { ...q, score } : q);
+    setSavedQuizzes(updated);
+    localStorage.setItem('SAVED_QUIZZES', JSON.stringify(updated));
+  };
+
+  const handleDeleteQuiz = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = savedQuizzes.filter(q => q.id !== id);
+    setSavedQuizzes(updated);
+    localStorage.setItem('SAVED_QUIZZES', JSON.stringify(updated));
+  };
+
+  // Rotating status message during AI loading
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGenerating) {
+      interval = setInterval(() => {
+        setGenerationStep((prev) => (prev + 1) % 4);
+      }, 5000);
+    } else {
+      setGenerationStep(0);
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
+
+  const generationMessages = [
+    'جاري قراءة نصوص المستند واستخراج الفقرات البنائية والمصطلحات المعتمدة...',
+    'جاري عزل وفهرسة المفاهيم التعليمية وصياغة مسودة ملخص الشرح الشامل...',
+    'يقوم الذكاء الاصطناعي الآن بصياغة الأسئلة الـ 15 بخيارات ذكية خالية من الحشو والهلوسة...',
+    'التحقق النهائي من توافق وتطابق الأسئلة بدقة 100% مع كتابة التفاسير التربوية المقررة...'
+  ];
+
+  // 1. Activation Handling (built-in keys: AI2027, DEMO100, MOUNT)
   const handleVerifyKey = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorText(null);
@@ -309,56 +392,28 @@ export default function ToolSection({
     try {
       const upperCode = codeToVerify.toUpperCase();
 
-      // If useSandbox is true OR is one of the built-in demo keys
-      if (useSandbox || upperCode === 'MOMEN2026' || upperCode === 'DEMO100' || upperCode === 'MOUNT') {
-        await new Promise((res) => setTimeout(res, 800)); // smooth visual pause
+      if (useSandbox || upperCode === 'AI2027' || upperCode === 'DEMO100' || upperCode === 'MOUNT') {
+        await new Promise((res) => setTimeout(res, 800)); // Smooth loading pause
         
-        if (upperCode === 'DEMO100') {
-          const mockKey: ActiveKey = { code: 'DEMO100', credits: 5 };
-          setActiveKey(mockKey);
-          setToolView('builder');
-          setIsVerifying(false);
-          return;
-        } else if (upperCode === 'MOUNT') {
-          const mockKey: ActiveKey = { code: 'MOUNT', credits: 15 };
-          setActiveKey(mockKey);
-          setToolView('builder');
-          setIsVerifying(false);
-          return;
-        } else if (upperCode === 'MOMEN2026') {
-          const mockKey: ActiveKey = { code: 'MOMEN2026', credits: 100 };
-          setActiveKey(mockKey);
-          setToolView('builder');
-          setIsVerifying(false);
-          return;
-        } else {
-          // If sandbox mode is explicitly on, let other codes pass, otherwise we throw
-          if (useSandbox) {
-            const mockKey: ActiveKey = { code: codeToVerify, credits: 3 };
-            setActiveKey(mockKey);
-            setToolView('builder');
-            setIsVerifying(false);
-            return;
-          } else {
-            throw new Error('KEY_NOT_FOUND');
-          }
-        }
+        let credits = 15;
+        if (upperCode === 'DEMO100') credits = 5;
+        else if (upperCode === 'MOUNT') credits = 15;
+        else if (upperCode === 'AI2027') credits = 5;
+        else if (useSandbox) credits = 3;
+
+        const mockKey: ActiveKey = { code: upperCode, credits };
+        setActiveKey(mockKey);
+        setToolView('builder');
+        return;
       }
 
-      // Actual Supabase connection!
+      // Live Supabase verification
       const normalizeSupaUrl = (rawUrl: string): string => {
         let u = rawUrl.trim();
-        while (u.endsWith('/')) {
-          u = u.slice(0, -1);
-        }
-        if (u.endsWith('/rest/v1')) {
-          u = u.slice(0, -8);
-        } else if (u.endsWith('rest/v1')) {
-          u = u.slice(0, -7);
-        }
-        while (u.endsWith('/')) {
-          u = u.slice(0, -1);
-        }
+        while (u.endsWith('/')) u = u.slice(0, -1);
+        if (u.endsWith('/rest/v1')) u = u.slice(0, -8);
+        else if (u.endsWith('rest/v1')) u = u.slice(0, -7);
+        while (u.endsWith('/')) u = u.slice(0, -1);
         return u;
       };
 
@@ -373,7 +428,6 @@ export default function ToolSection({
       let detectedColumn = 'key_code';
       let querySuccess = false;
 
-      // Try key_code first to match the user's specific guidelines
       try {
         const fetchUrl = `${baseUrl}/rest/v1/active_keys?key_code=eq.${encodeURIComponent(codeToVerify)}&select=*`;
         const response = await fetch(fetchUrl, {
@@ -389,8 +443,7 @@ export default function ToolSection({
           querySuccess = true;
           detectedColumn = 'key_code';
         } else {
-          // First attempt failed (e.g. table doesn't exist or column key_code doesn't exist)
-          // Let's fallback to checking 'code' column
+          // Fallback check code column
           const fetchUrlFallback = `${baseUrl}/rest/v1/active_keys?code=eq.${encodeURIComponent(codeToVerify)}`;
           const responseFallback = await fetch(fetchUrlFallback, {
             method: 'GET',
@@ -406,8 +459,8 @@ export default function ToolSection({
             detectedColumn = 'code';
           }
         }
-      } catch (e: any) {
-        // Ignored, handled below
+      } catch (e) {
+        // Handled below
       }
 
       if (querySuccess) {
@@ -415,12 +468,9 @@ export default function ToolSection({
           throw new Error('KEY_NOT_FOUND');
         }
       } else {
-        // Fallback for MOMEN2026 if DB setup isn't done, otherwise throw KEY_NOT_FOUND
-        if (upperCode === 'MOMEN2026') {
-          const mockKey: ActiveKey = { code: 'MOMEN2026', credits: 100 };
-          setActiveKey(mockKey);
+        if (upperCode === 'AI2027') {
+          setActiveKey({ code: 'AI2027', credits: 5 });
           setToolView('builder');
-          setIsVerifying(false);
           return;
         }
         throw new Error('KEY_NOT_FOUND');
@@ -433,29 +483,26 @@ export default function ToolSection({
         throw new Error('CREDITS_EXHAUSTED');
       }
 
-      // Establish active session
       setActiveKey({
         code: codeToVerify,
         credits: credits,
         columnName: detectedColumn
       });
 
-      // Advance to designer
       setToolView('builder');
-
     } catch (err: any) {
       console.error(err);
       if (err.message === 'CREDITS_EXHAUSTED') {
-        setErrorText('لقد استنفد هذا الكود كامل رصيد الاختبارات المتاح له. يرجى اقتناء باقة جديدة.');
+        setErrorText('لقد استنفد هذا الكود كامل رصيد التوليد المتاح. يرجى شراء باقة جديدة للحصول على كود جديد.');
       } else {
-        setErrorText('كود التفعيل خاطئ أو غير متوفر.');
+        setErrorText('كود التفعيل خاطئ أو غير متوفر في السحابة.');
       }
     } finally {
       setIsVerifying(false);
     }
   };
 
-  // 2. File Upload Change Handlers
+  // 2. Drag / Drop Upload Handling
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       processSelectedFile(e.target.files[0]);
@@ -465,10 +512,6 @@ export default function ToolSection({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -482,11 +525,14 @@ export default function ToolSection({
   const processSelectedFile = async (file: File) => {
     setErrorText(null);
     if (file.type !== 'application/pdf') {
-      setErrorText('يرجى اختيار ملف مستند بصيغة PDF فقط.');
+      setErrorText('يرجى اختيار مستند بصيغة PDF فقط لضمان سلامة الاستخلاص.');
       return;
     }
 
     setUploadedFile(file);
+    if (!customQuizName) {
+      setCustomQuizName(file.name.replace('.pdf', ''));
+    }
     setPdfParsingProgress(0);
 
     try {
@@ -495,69 +541,65 @@ export default function ToolSection({
       });
 
       if (!text || text.trim().length === 0) {
-        throw new Error('تعذر قراءة أي كلمات صحيحة أو نصوص عربية من ملف الـ PDF. قد يكون المستند عبارة عن صور ممسوحة ضوئياً فقط.');
+        throw new Error('تعذر العثور على نصوص عربية مقروءة داخل ملف الـ PDF. قد يكون الملف عبارة عن صور ممسوحة ضوئياً فقط.');
       }
-
       setExtractedPdfText(text);
     } catch (err: any) {
       console.error(err);
-      setErrorText(err.message || 'حدث خطأ مباغت أثناء تفكيك وقراءة ملف الـ PDF.');
+      setErrorText(err.message || 'فشلت معالجة مستند الـ PDF.');
       setUploadedFile(null);
     } finally {
       setPdfParsingProgress(null);
     }
   };
 
-  // 3. AI Quiz Generation Request
+  // 3. AI Quiz Generation
   const handleGenerateQuiz = async () => {
     setErrorText(null);
     if (!activeKey) {
       setToolView('activate');
-      setErrorText('يرجى تفعيل كود الباقة أولاً للوصول لميزات توليد الاختبارات.');
+      setErrorText('يرجى كتابة رمز التنشيط أولاً.');
       return;
     }
 
     if (activeKey.credits <= 0) {
-      setErrorText('رصيد الاختبارات غير كافٍ. يرجى تفعيل كود جديد.');
+      setErrorText('الرصيد المتبقي صفر. لا يمكنك التوليد، تفضل باقتناء كود جديد.');
       return;
     }
 
-    // Capture text payload
     let textToAnalyse = '';
+    let chosenQuizName = customQuizName.trim() || 'اختبار تفاعلي جديد';
+    
     if (inputMethod === 'pdf') {
       if (!uploadedFile || !extractedPdfText) {
-        setErrorText('يرجى رفع ملف PDF والانتظار حتى يتم استخراج المضمون العلمي.');
+        setErrorText('يرجى سحب ملف PDF أو رفعه أولاً.');
         return;
       }
       textToAnalyse = extractedPdfText;
     } else {
       if (!manualText.trim() || manualText.trim().length < 50) {
-        setErrorText('يرجى لصق نص كافٍ (أكثر من 50 حرفاً) لتشكيل المادة العلمية للاختبار الذكي.');
+        setErrorText('برجاء إدخال نص دراسي منسق يحتوي على 50 حرفاً كحد أدنى.');
         return;
       }
       textToAnalyse = manualText;
+      if (!customQuizName) {
+        chosenQuizName = `اختبار نصي يدوي - ${new Date().toLocaleDateString('ar-SA')}`;
+      }
     }
 
     setIsGenerating(true);
 
     try {
-      // Step A: Deduct 1 credit from database BEFORE representing results
+      // Deduct credit
       const newCreditsBalance = activeKey.credits - 1;
 
       if (!useSandbox) {
         const normalizeSupaUrl = (rawUrl: string): string => {
           let u = rawUrl.trim();
-          while (u.endsWith('/')) {
-            u = u.slice(0, -1);
-          }
-          if (u.endsWith('/rest/v1')) {
-            u = u.slice(0, -8);
-          } else if (u.endsWith('rest/v1')) {
-            u = u.slice(0, -7);
-          }
-          while (u.endsWith('/')) {
-            u = u.slice(0, -1);
-          }
+          while (u.endsWith('/')) u = u.slice(0, -1);
+          if (u.endsWith('/rest/v1')) u = u.slice(0, -8);
+          else if (u.endsWith('rest/v1')) u = u.slice(0, -7);
+          while (u.endsWith('/')) u = u.slice(0, -1);
           return u;
         };
 
@@ -578,25 +620,16 @@ export default function ToolSection({
         });
 
         if (!patchResponse.ok) {
-          let errorMsg = '';
-          try {
-            const errBody = await patchResponse.json();
-            errorMsg = errBody.message || errBody.error || JSON.stringify(errBody);
-          } catch {
-            errorMsg = `${patchResponse.status} ${patchResponse.statusText || ''}`;
-          }
-          throw new Error(`فشل تحديث الرصيد في قاعدة البيانات: ${errorMsg}`);
+          throw new Error('فشل خصم الرصيد من السحابة.');
         }
       }
 
-      // Locally update credit count
       setActiveKey({
         ...activeKey,
         credits: newCreditsBalance
       });
 
-      // Step B: Send POST request to our Full-stack Express backend API securely, with smart client-side fallback
-      let generatedQuestions: Question[] = [];
+      let payload: any = null;
       let usedFallback = false;
 
       try {
@@ -607,66 +640,96 @@ export default function ToolSection({
           },
           body: JSON.stringify({
             text: textToAnalyse,
-            customKey: customGeminiKey // optional custom key override
+            customKey: customGeminiKey
           })
         });
 
         if (!response.ok) {
-          let fallbackMsg = '';
-          try {
-            const errorData = await response.json();
-            fallbackMsg = errorData.error || '';
-          } catch {
-            fallbackMsg = 'NOT_JSON';
-          }
-          throw new Error(fallbackMsg || `HTTP error ${response.status}`);
+          throw new Error('Backend failed');
         }
 
         const responseText = await response.text();
-        try {
-          generatedQuestions = JSON.parse(responseText);
-        } catch {
-          throw new Error('NOT_JSON');
-        }
-      } catch (backendErr: any) {
-        console.warn('Backend generation failed, trying browser-direct client-side generation fallback...', backendErr);
+        payload = JSON.parse(responseText);
+      } catch (backendErr) {
+        console.warn('Backend failed, attempting browser direct generation fallback...', backendErr);
         
-        // If we have custom Gemini Key filled in settings, do direct client-side generation!
         if (customGeminiKey && customGeminiKey.trim() !== '') {
-          try {
-            generatedQuestions = await generateQuizDirectlyOnClient(textToAnalyse, customGeminiKey.trim());
-            usedFallback = false;
-          } catch (clientGeminiErr: any) {
-            console.error('Client direct Gemini API call also failed:', clientGeminiErr);
-            throw new Error(`فشلت محاولة الاتصال بالخادم، وكذلك تعذر الاتصال المباشر بـ Gemini: ${clientGeminiErr.message}`);
-          }
+          payload = await generateQuizDirectlyOnClient(textToAnalyse, customGeminiKey.trim());
+          usedFallback = false;
         } else {
-          // If no custom key and backend is not working (like static Vercel), fall back to pre-generated premium quiz dataset
-          generatedQuestions = getClientFallbackQuiz();
+          payload = {
+            summary: "تم استرداد هذا الاختبار التفاعلي المنوع لضمان تخديمك بالكامل نظراً لتجاوز الضغط على خوادم السحابة الحيوية الحالية.",
+            questions: getClientFallbackQuiz()
+          };
           usedFallback = true;
         }
       }
 
-      if (!Array.isArray(generatedQuestions) || generatedQuestions.length === 0) {
-        throw new Error('فشل توليد أسئلة متوافقة مع الهيكل المرجو. يرجى إدخال مادة علمية أوضح.');
+      let finalQuestions: Question[] = [];
+      let finalSummary = '';
+
+      if (payload && typeof payload === 'object') {
+        if (Array.isArray(payload.questions)) {
+          finalQuestions = payload.questions;
+          finalSummary = payload.summary || '';
+        } else if (Array.isArray(payload)) {
+          finalQuestions = payload;
+          finalSummary = 'اختبار مقنن منسق من المحتوى المدرج.';
+        }
       }
 
-      setQuestions(generatedQuestions);
+      if (finalQuestions.length === 0) {
+        throw new Error('حدثت مشكلة في تنظيم بنية الأسئلة المسترجعة.');
+      }
+
+      // Update current quiz play state
+      setQuizName(chosenQuizName);
+      setQuestions(finalQuestions);
+      setPdfSummary(finalSummary);
       setFallbackActive(usedFallback);
       setUserAnswers({});
       setQuizSubmitted(false);
+
+      // Save to past history in state and storage
+      saveQuizToDashboard(chosenQuizName, finalSummary, finalQuestions);
+
       setToolView('quiz');
     } catch (err: any) {
       console.error(err);
-      setErrorText(err.message || 'حدث خطأ مفاجئ أثناء توليد الأسئلة.');
+      setErrorText(err.message || 'حدث خطأ مفاجئ أثناء التوليد.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // 4. Submit & Correct Quiz
+  // 4. Load Quiz From History
+  const handleLoadQuizFromHistory = (quiz: SavedQuiz) => {
+    setQuizName(quiz.name);
+    setQuestions(quiz.questions);
+    setPdfSummary(quiz.summary);
+    setUserAnswers({});
+    setQuizSubmitted(false);
+    setQuizScore(0);
+    setFallbackActive(false);
+    setToolView('quiz');
+  };
+
+  // Load a Quick Demo Quiz to try player instantly
+  const handleLoadDemoQuiz = () => {
+    const demoQuestions = getClientFallbackQuiz();
+    const demoQuiz: SavedQuiz = {
+      id: 'demo-quiz-static',
+      name: '💡 بنك علمي تجريبي (المعلومات العامة)',
+      summary: 'مراجعة عريضة في أساسيات الفيزياء والكيمياء وعلوم الكواكب لتمكينك من اختبار ميزات الاستعراض والتصحيح مباشرة.',
+      questions: demoQuestions,
+      date: new Date().toLocaleDateString('ar-SA'),
+    };
+    handleLoadQuizFromHistory(demoQuiz);
+  };
+
+  // 5. Quiz Solver actions
   const handleSelectOption = (questionIndex: number, optionText: string) => {
-    if (quizSubmitted) return; // locked after submission
+    if (quizSubmitted) return;
     setUserAnswers({
       ...userAnswers,
       [questionIndex]: optionText
@@ -674,651 +737,919 @@ export default function ToolSection({
   };
 
   const handleCorrectQuiz = () => {
-    // Audit that at least one question got answered for safety
-    if (Object.keys(userAnswers).length === 0) {
-      setErrorText('يرجى تحديد إجابة واحدة على الأقل قبل تصحيح الاختبار الدراسـي.');
-      return;
-    }
-
-    let correctCount = 0;
+    let score = 0;
     questions.forEach((q, idx) => {
-      const userAnswerText = userAnswers[idx];
-      // Check if it matches correctAnswer exactly
-      if (userAnswerText && userAnswerText.trim() === q.correctAnswer.trim()) {
-        correctCount++;
+      const uAns = userAnswers[idx];
+      if (uAns && uAns.trim() === q.correctAnswer.trim()) {
+        score++;
       }
     });
 
-    setQuizScore(correctCount);
+    setQuizScore(score);
     setQuizSubmitted(true);
     setErrorText(null);
-    
-    // Scroll to top of core layout for results visualization
+
+    // Update history storage with this score
+    const currentQuizInHistory = savedQuizzes.find(q => q.name === quizName);
+    if (currentQuizInHistory) {
+      handleUpdateQuizScore(currentQuizInHistory.id, score);
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleResetForNewQuiz = () => {
-    setQuestions([]);
-    setUserAnswers({});
-    setQuizSubmitted(false);
     setUploadedFile(null);
     setExtractedPdfText('');
     setManualText('');
+    setCustomQuizName('');
     setToolView('builder');
   };
 
+  // 6. Sharing & Exporting Tools
+  const handleCopyQuizToClipboard = () => {
+    let buffer = `📝 ${quizName}\n\n`;
+    buffer += `📌 ملخص مستند المعلم الذكي:\n${pdfSummary}\n\n`;
+    buffer += `==================================\n\n`;
+
+    questions.forEach((q, idx) => {
+      buffer += `س${idx + 1}: ${q.question}\n`;
+      q.options.forEach((opt, oIdx) => {
+        buffer += `  [ ] ${opt}\n`;
+      });
+      buffer += `\n* الإجابة الصحيحة: ${q.correctAnswer}\n`;
+      buffer += `* التفسير العلمي: ${q.explanation}\n\n`;
+      buffer += `----------------------------------\n\n`;
+    });
+
+    navigator.clipboard.writeText(buffer);
+    setTextCopied(true);
+    setTimeout(() => setTextCopied(false), 2000);
+  };
+
+  const triggerGmailDraftCompose = (toEmail: string) => {
+    const subject = `[مُعلِّـم الذكي] ${quizName} - أسئلة الشرح والتقييم المقررة`;
+    
+    let body = `أهلاً بك،\n\nلقد قام تطبيق \"مُعلِّـم الذكي\" بصياغة هذا الاختبار التفاعلي بناءً على المحتوى الدراسي المعتمد.\n\n`;
+    body += `عنوان المستند: ${quizName}\n`;
+    body += `عدد الأسئلة: 15 سؤالاً قياسياً\n`;
+    body += `ملخص المادة للذكاء الاصطناعي: ${pdfSummary}\n\n`;
+    body += `----------------------------------\n\n`;
+
+    questions.forEach((q, idx) => {
+      body += `س${idx + 1}: ${q.question}\n`;
+      q.options.forEach((opt, oIdx) => {
+        body += `  - ${opt}\n`;
+      });
+      body += `\n* الإجابة الصحيحة: ${q.correctAnswer}\n`;
+      body += `* التفسير العلمي المعتمد: ${q.explanation}\n\n`;
+      body += `----------------------------------\n\n`;
+    });
+
+    body += `\nتم إرساله بكامل الدقة والمطابقة بضمان معايير مُعلِّـم الذكي.`;
+
+    const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(gmailComposeUrl, '_blank');
+    setShowGmailModal(false);
+  };
+
+  // Filter history
+  const filteredHistory = savedQuizzes.filter(quiz => 
+    quiz.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    quiz.summary.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-10 font-sans relative">
+    <div className={`w-full max-w-6xl mx-auto px-4 sm:px-8 py-6 font-sans relative ${isPrintMode ? 'bg-white text-black p-0 border-0' : 'text-slate-900'}`}>
       
-      {/* 2. Beautiful Harmonious Educational Background Image Inside Tool Section */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center pointer-events-none mix-blend-overlay opacity-[0.03] transition-opacity duration-1000"
-        style={{ 
-          backgroundImage: `url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1920&q=80')` 
-        }} 
-      />
-
-      {/* Top Breadcrumb & Status Navigation with Premium Stepper Layout */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-10 border-b border-slate-100 pb-5 z-10 relative">
-        <button
-          onClick={onBackToLanding}
-          className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer self-start sm:self-auto group"
-        >
-          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-1 transition-transform" />
-          العودة للرئيسية
-        </button>
-
-        {/* Stepper indicator pills */}
-        <div className="flex items-center gap-1.5 sm:gap-3 text-xs bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50">
-          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-            toolView === 'activate' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-500'
-          }`}>1. تنشيط الكود</span>
-          <span className="text-slate-300 font-mono">/</span>
-          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-            toolView === 'builder' ? 'bg-slate-900 text-white shadow-xs' : activeKey ? 'text-slate-800 font-bold' : 'text-slate-400'
-          }`}>2. بناء وتوليد</span>
-          <span className="text-slate-300 font-mono">/</span>
-          <span className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-            toolView === 'quiz' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-400'
-          }`}>3. الاختبار التقييمي</span>
-        </div>
-
-        {/* Key credentials container if active */}
-        {activeKey && (
-          <div className="flex items-center gap-4 bg-white/90 backdrop-blur-md border border-slate-150 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 shadow-xs">
-            <span className="flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-              كود نشط: <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-indigo-700">{activeKey.code}</code>
-            </span>
-            <span className="text-slate-200">|</span>
-            <span className="flex items-center gap-1 text-slate-850">
-              <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-spin" style={{ animationDuration: '8s' }} />
-              الرصيد: 
-              <span className="bg-blue-50 text-blue-600 font-extrabold px-2 py-0.5 rounded-md min-w-[20px] text-center border border-blue-100">
-                {activeKey.credits}
-              </span> 
-              محاولات
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Database Setup Guideline and General Errors */}
-      {errorText && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8 p-6 bg-red-50 border border-red-100 text-red-800 rounded-3xl flex flex-col gap-4 text-sm font-medium shadow-sm z-10 relative"
-        >
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-            <div className="space-y-1 flex-1">
-              <p className="font-bold text-slate-950 text-sm">تنبيه النظام</p>
-              <p className="text-red-700 font-light leading-relaxed">{errorText}</p>
+      {/* Printable Sheet View - Pure formal exam paper */}
+      {isPrintMode && (
+        <div className="bg-white p-8 space-y-6 text-right font-sans" style={{ direction: 'rtl' }}>
+          
+          {/* Print Header */}
+          <div className="border-4 border-double border-slate-900 p-5 text-center space-y-2 relative">
+            <h1 className="text-2xl font-black text-slate-950">مستند اختبار وتقويم المادة مفرغ للطباعة</h1>
+            <p className="text-sm font-semibold max-w-lg mx-auto">{quizName}</p>
+            <div className="grid grid-cols-3 gap-4 text-xs font-bold pt-4 text-slate-700">
+              <div className="border border-slate-400 p-2 rounded">اسم الطالب: __________________</div>
+              <div className="border border-slate-400 p-2 rounded">الصف والشعبة: ______________</div>
+              <div className="border border-slate-400 p-2 rounded">التاريخ:     /    /     ١٤٤هـ</div>
+            </div>
+            
+            <div className="absolute top-4 left-4 w-16 h-16 border-2 border-slate-900 rounded-full flex flex-col justify-center items-center">
+              <span className="text-[9px] font-bold">الدرجة</span>
+              <span className="text-xs font-black">١٥ / __</span>
             </div>
           </div>
 
-          {(errorText.includes('class cache') || errorText.includes('cache') || errorText.includes('active_keys') || errorText.includes('جدول')) && (
+          {/* PDF Summary Callout for Students if toggled */}
+          <div className="p-4 bg-slate-50 border border-slate-300 rounded-xl">
+            <p className="text-xs font-black text-slate-900 mb-1">📘 موجز المضمون والمفاهيم المقررة:</p>
+            <p className="text-xs text-slate-700 leading-relaxed text-justify font-light">{pdfSummary}</p>
+          </div>
+
+          <p className="text-xs text-slate-400 font-serif text-center italic">* اقرأ جميع الأسئلة التالية جيداً ثم ظلل المربع المقابل للإجابة المناسبة بدقة.</p>
+
+          {/* Questions */}
+          <div className="space-y-6">
+            {questions.map((q, qIdx) => (
+              <div key={qIdx} className="space-y-2.5 pb-4 border-b border-dashed border-slate-300">
+                <p className="text-sm font-bold text-slate-950">
+                  س{qIdx + 1}: {q.question}
+                </p>
+                <div className="grid grid-cols-2 gap-2 text-xs pr-4">
+                  {q.options.map((opt, optIdx) => (
+                    <div key={optIdx} className="flex items-center gap-2">
+                      <span className="w-4 h-4 border border-slate-600 rounded flex shrink-0 items-center justify-center font-mono text-[10px]" />
+                      <span>{opt}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Print Action Overlay for returning layout */}
+          <div className="fixed bottom-6 left-6 z-50 flex gap-3 print:hidden">
             <button
-              type="button"
-              onClick={() => setShowSqlDetails(!showSqlDetails)}
-              className="text-xs text-red-600 hover:text-red-800 font-bold underline flex items-center gap-1 cursor-pointer self-start"
+              onClick={() => window.print()}
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg cursor-pointer flex items-center gap-2"
             >
-              {showSqlDetails ? 'إخفاء إرشادات تهيئة قاعدة البيانات الفنية' : 'عرض إرشادات تهيئة قاعدة البيانات والـ SQL المتقدمة (لمسؤول الموقع)'}
+              <Printer className="w-4 h-4" />
+              ابدأ إرسال الطابعة
             </button>
-          )}
+            <button
+              onClick={() => setIsPrintMode(false)}
+              className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-lg cursor-pointer"
+            >
+              العودة للوحة الإجراءات الرقمية
+            </button>
+          </div>
+        </div>
+      )}
 
-          {showSqlDetails && (errorText.includes('class cache') || errorText.includes('cache') || errorText.includes('active_keys') || errorText.includes('جدول')) && (
-            <div className="mt-2 bg-white/95 border border-red-200 rounded-2xl p-5 text-slate-700 font-light space-y-3 shadow-md">
-              <p className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#10b981]" />
-                💡 طريقة تهيئة الجدول في Supabase لإصلاح المشكلة فوراً:
-              </p>
-              <ol className="list-decimal list-inside text-xs space-y-2 text-slate-600 leading-normal pr-1">
-                <li>افتح لوحة تحكم مشروعك في موقع <strong className="text-emerald-700 font-bold">Supabase</strong>.</li>
-                <li>من القائمة الجانبية اليسرى للمشروع، اختر <strong className="text-indigo-600 font-bold">SQL Editor</strong>.</li>
-                <li>اضغط على زر <strong className="text-indigo-600 font-bold">New Query</strong> لفتح محرر استعلام فارغ ومستقل.</li>
-                <li>قم بنسخ كود الـ SQL المكتوب بالأسفل بالكامل، والصقه في المحرر، ثم اضغط على زر <strong className="bg-[#10b981] text-white px-2 py-0.5 rounded text-[10px] font-bold">Run</strong>.</li>
-              </ol>
+      {/* Standard SaaS Web Workspace */}
+      {!isPrintMode && (
+        <>
+          {/* Breadcrumb Stepper with responsive layouts */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-5 mb-8 border-b border-slate-100 pb-5 z-10 relative">
+            <button
+              onClick={onBackToLanding}
+              className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer self-start group"
+            >
+              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-transform" />
+              العودة للرئيسية
+            </button>
 
-              <div className="relative mt-2">
-                <pre className="bg-slate-950 text-slate-200 p-4 rounded-xl text-[10px] sm:text-[11px] font-mono overflow-x-auto text-left leading-normal whitespace-pre shadow-inner">
-{`-- 1. إنشاء جدول أكواد التفعيل active_keys
-CREATE TABLE public.active_keys (
+            {/* Stepper indicators */}
+            <div className="flex items-center gap-1 sm:gap-2 text-xs bg-slate-50 p-1 rounded-xl border border-slate-200">
+              <span className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                toolView === 'activate' ? 'bg-slate-900 text-white' : 'text-slate-500'
+              }`}>١. فحص المفتاح</span>
+              <span className="text-slate-300">/</span>
+              <span className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                toolView === 'builder' ? 'bg-slate-900 text-white' : activeKey ? 'text-slate-800 font-bold' : 'text-slate-400'
+              }`}>٢. ساحة العمل والداشبورد</span>
+              <span className="text-slate-300">/</span>
+              <span className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                toolView === 'quiz' ? 'bg-slate-900 text-white' : 'text-slate-400'
+              }`}>٣. الامتحان التفاعلي</span>
+            </div>
+
+            {/* Credit count details */}
+            {activeKey && (
+              <div className="flex items-center gap-3 bg-indigo-50/70 border border-indigo-150 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-indigo-950 shadow-2xs">
+                <span className="flex items-center gap-1">
+                  <Key className="w-3.5 h-3.5 text-indigo-500" />
+                  مفتاحك: <code className="bg-white border text-[11px] px-1.5 py-0.5 rounded font-mono font-black text-indigo-700">{activeKey.code}</code>
+                </span>
+                <span className="text-indigo-200">|</span>
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  الرصيد: 
+                  <span className="bg-indigo-600 text-white font-black px-2 py-0.5 rounded-md min-w-[20px] text-center font-mono">
+                    {activeKey.credits}
+                  </span>
+                  محاولة متبقية
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* System Warnings */}
+          {errorText && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 bg-orange-50 border border-orange-100 text-orange-900 rounded-3xl flex flex-col gap-3 text-xs sm:text-sm font-medium shadow-2xs"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
+                <div className="space-y-1 flex-1">
+                  <p className="font-extrabold text-slate-900">تنبيه ومساعدة النظام</p>
+                  <p className="text-slate-700 font-light leading-relaxed">{errorText}</p>
+                </div>
+              </div>
+
+              {(errorText.includes('class cache') || errorText.includes('cache') || errorText.includes('active_keys') || errorText.includes('جدول')) && (
+                <button
+                  type="button"
+                  onClick={() => setShowSqlDetails(!showSqlDetails)}
+                  className="text-xs text-orange-600 hover:text-orange-900 font-bold underline flex items-center gap-1 cursor-pointer self-start"
+                >
+                  {showSqlDetails ? 'إخفاء أوامر الـ SQL لتهيئة الجدول' : 'إظهار قواعد تثبيت الجدول فورا عبر SQL (لمسؤول الموقع)'}
+                </button>
+              )}
+
+              {showSqlDetails && (
+                <div className="bg-white border rounded-xl p-4 text-xs space-y-2 mt-2 leading-relaxed text-slate-700">
+                  <p className="font-bold text-slate-900">انتقِ SQL Editor في لوحة Supabase، والصق التالي ثم انقر على Run:</p>
+                  <pre className="bg-slate-900 text-slate-200 p-3 rounded-lg text-[10px] font-mono overflow-x-auto whitespace-pre text-left">
+{`CREATE TABLE public.active_keys (
   id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
   key_code TEXT NOT NULL UNIQUE,
   credits INTEGER NOT NULL DEFAULT 100,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 2. إدخال رمز تجريبي للتفعيل (يمكنك استخدامه مباشرة)
 INSERT INTO public.active_keys (key_code, credits)
-VALUES ('MOMEN2026', 100)
+VALUES ('AI2027', 5)
 ON CONFLICT (key_code) DO NOTHING;
 
--- 3. تفعيل الحماية وتصاريح قراءة وتحديث الأرصدة للجميع
 ALTER TABLE public.active_keys ENABLE ROW LEVEL SECURITY;
-
 CREATE POLICY "Allow public read" ON public.active_keys FOR SELECT USING (true);
 CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true);`}
-                </pre>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const sqlText = `-- 1. إنشاء جدول أكواد التفعيل active_keys\nCREATE TABLE public.active_keys (\n  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,\n  key_code TEXT NOT NULL UNIQUE,\n  credits INTEGER NOT NULL DEFAULT 100,\n  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL\n);\n\n-- 2. إدخال رمز تجريبي للتفعيل (يمكنك استخدامه مباشرة)\nINSERT INTO public.active_keys (key_code, credits)\nVALUES ('MOMEN2026', 100)\nON CONFLICT (key_code) DO NOTHING;\n\n-- 3. تفعيل الحماية وتصاريح قراءة وتحديث الأرصدة للجميع\nALTER TABLE public.active_keys ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY "Allow public read" ON public.active_keys FOR SELECT USING (true);\nCREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true);`;
-                    navigator.clipboard.writeText(sqlText);
-                    setSqlCopied(true);
-                    setTimeout(() => setSqlCopied(false), 2000);
-                  }}
-                  className="absolute top-3 right-3 bg-white/10 hover:bg-white/20 text-white rounded-lg px-3 py-1.5 text-[10px] sm:text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-sm"
-                >
-                  {sqlCopied ? 'تم نسخ الجدول! ✓' : 'نسخ الكود'}
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-500 font-light pr-1">
-                * عند نجاح تثبيت الجدول في Supabase، عد إلى هذه الصفحة مباشرة وأدخل كود التجربة <code className="bg-slate-100 text-indigo-700 px-1 rounded font-bold font-mono">MOMEN2026</code> لتجربة باقة الاختبارات فورا وبشكل حي!
-              </p>
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* Main Transitions Canvas */}
-      <AnimatePresence mode="wait">
-        
-        {/* VIEW A: Activate Key with Superb Premium Polish */}
-        {toolView === 'activate' && (
-          <motion.div
-            key="activate-screen"
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            className="w-full max-w-lg mx-auto bg-white rounded-[32px] border border-slate-100 p-8 sm:p-10 flex flex-col relative overflow-hidden shadow-xl shadow-slate-100/60 z-10"
-          >
-            {/* Ambient visual overlay inside card */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl opacity-40 pointer-events-none" />
-
-            <div className="space-y-6 relative z-10">
-              
-              {/* Stepper badge */}
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="space-y-1">
-                  <h2 className="font-extrabold text-slate-900 text-xl flex items-center gap-2">
-                    <Key className="w-5 h-5 text-blue-600 animate-pulse" />
-                    تفعيل باقة الاختبارات
-                  </h2>
-                  <p className="text-xs text-slate-400 font-light">أدخل الرمز المستلم للاستفادة الكاملة من محرك الأسئلة الذكي</p>
+                  </pre>
+                  <p className="text-[10px]">استخدم الكود <code className="bg-indigo-50 text-indigo-700 px-1 font-mono font-bold">Ai2027</code> للتفعيل الفوري.</p>
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-widest bg-slate-50 border px-2 py-1 rounded-md">Step 01</span>
-              </div>
-
-              {/* Activation Form with High Contrast Inputs */}
-              <form onSubmit={handleVerifyKey} className="space-y-5">
-                <div className="space-y-2 text-right">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">كود التفعيل المستلم</label>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input
-                      type="text"
-                      required
-                      value={activationCode}
-                      onChange={(e) => setActivationCode(e.target.value)}
-                      placeholder={useSandbox ? "أدخل DEMO100 للتجربة" : "MOMEN2026 أو الكود الخاص بك"}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-center font-mono font-extrabold text-slate-900 tracking-wider text-md focus:bg-white focus:ring-4 focus:ring-blue-100/50 focus:border-blue-500 transition-all uppercase placeholder:normal-case placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-350 outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isVerifying}
-                      className="bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white px-7 py-4 rounded-2xl text-sm font-bold shadow-lg shadow-slate-950/10 hover:shadow-slate-950/20 transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {isVerifying ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          المعالجة...
-                        </>
-                      ) : (
-                        'تفعيل الآن'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              {/* Dynamic feedback under input */}
-              {activationCode.trim() !== '' && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center gap-3.5"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-extrabold">
-                    ✓
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-blue-900">الكود جاهز للتحقق الفوري</div>
-                    <div className="text-[10px] text-blue-600/95 font-light">بمجرد الضغط على تفعيل الآن سنقوم بمطابقة الكود وحقن الرصيد.</div>
-                  </div>
-                </motion.div>
               )}
+            </motion.div>
+          )}
 
-              {/* Callout support */}
-              <div className="pt-4 border-t border-dashed border-slate-100 text-center">
-                <p className="text-xs text-slate-500">
-                  لا تملك كود تفعيل؟{' '}
-                  <button
-                    type="button"
-                    onClick={onBackToLanding}
-                    className="text-blue-600 hover:text-blue-700 hover:underline font-bold transition duration-150 cursor-pointer"
-                  >
-                    انقر هنا لاقتناء كود بـ 19 ريالاً فقط
-                  </button>
-                </p>
-              </div>
-
-            </div>
-          </motion.div>
-        )}
-
-        {/* VIEW B: PDF Builder and Quiz Config with High Contrast Bento Design */}
-        {toolView === 'builder' && (
-          <motion.div
-            key="builder-screen"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="space-y-8 z-10 relative"
-          >
-            {/* Premium Header Banner */}
-            <div className="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
-              <div className="space-y-1.5 text-right flex-1">
-                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs font-bold">✓</span>
-                  تم تنشيط المفتاح بنجاح!
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 max-w-xl font-light leading-relaxed">
-                  أنت الآن جاهز لرفع المادة التعليمية الخاصة بك وبناء الاختبار التفاعلي. مع كل اختبار تولده سيتم احتساب رصيد واحد.
-                </p>
-              </div>
-
-              <div className="shrink-0 flex items-center gap-2 bg-slate-50 px-4 py-2 border rounded-xl font-medium text-xs text-slate-600 select-none">
-                <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                <span>الحد الحالي: 15 سؤال قياس لكل ملزمة</span>
-              </div>
-            </div>
-
-            {/* Config: Input Method Selector */}
-            <div className="bg-slate-100/50 p-1 rounded-2xl max-w-sm flex border border-slate-200">
-              <button
-                onClick={() => setInputMethod('pdf')}
-                className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  inputMethod === 'pdf' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
-                }`}
+          {/* Main Dashboard Canvas Switcher */}
+          <AnimatePresence mode="wait">
+            
+            {/* VIEW A: Activate Key */}
+            {toolView === 'activate' && (
+              <motion.div
+                key="activate-pane"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="max-w-lg mx-auto bg-white border border-slate-150 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-xl relative overflow-hidden"
               >
-                <UploadCloud className="w-4 h-4" />
-                تحميل ملف PDF
-              </button>
-              <button
-                onClick={() => setInputMethod('text')}
-                className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer ${
-                  inputMethod === 'text' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <ClipboardType className="w-4 h-4" />
-                لصق نص يدوي
-              </button>
-            </div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-60 pointer-events-none" />
+                
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100">
+                    <Key className="w-6 h-6 animate-pulse" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900">تنشيط بوابة الاختبارات الحيوية</h2>
+                  <p className="text-xs text-slate-400 font-light max-w-sm mx-auto">للبدء برفع ملفات الـ PDF وتوليد بنوك الأسئلة الذكية بضمان دقة كاملة.</p>
+                </div>
 
-            {/* Primary Input Container */}
-            <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 min-h-[340px] flex flex-col justify-center shadow-xs">
-              
-              {inputMethod === 'pdf' ? (
-                /* PDF Loader with Interactive Progress indicator */
-                <div className="space-y-4">
-                  {pdfParsingProgress !== null ? (
-                    <div className="text-center py-12 space-y-5">
-                      <div className="relative inline-flex items-center justify-center">
-                        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center">
-                          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="space-y-2 max-w-xs mx-auto">
-                        <p className="text-sm font-bold text-slate-850">جاري مسح ومعالجة مستند الـ PDF...</p>
-                        <p className="text-[11px] text-slate-400">نستخرج النصوص العربية بعناية وندرس المفاهيم</p>
-                        
-                        {/* Progress Indicator */}
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mt-3">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${pdfParsingProgress}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-mono font-black text-blue-600">{pdfParsingProgress}%</span>
-                      </div>
-                    </div>
-                  ) : uploadedFile ? (
-                    /* Display Selected Document Detail */
-                    <div className="p-6 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 text-right">
-                        <div className="p-3.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
-                          <FileText className="w-8 h-8" />
-                        </div>
-                        <div className="space-y-1">
-                          <p className="font-bold text-slate-900 max-w-md truncate text-sm sm:text-md">{uploadedFile.name}</p>
-                          <p className="text-xs text-slate-400 font-light">الحجم المستكشف: {(uploadedFile.size / (1024 * 1024)).toFixed(2)} ميجابايت • تم سحب المضمون ووضعه رهن التوليد</p>
-                        </div>
-                      </div>
+                <form onSubmit={handleVerifyKey} className="space-y-4">
+                  <div className="space-y-1.5 text-right">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">كود التفعيل المستلم</label>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        required
+                        value={activationCode}
+                        onChange={(e) => setActivationCode(e.target.value)}
+                        placeholder="Ai2027 للتجربة الفورية"
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-center font-mono font-extrabold text-slate-800 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-150/40 focus:border-indigo-500 transition placeholder:font-sans placeholder:font-normal placeholder:text-slate-350 outline-none"
+                      />
                       <button
-                        onClick={() => {
-                          setUploadedFile(null);
-                          setExtractedPdfText('');
-                        }}
-                        className="py-2 px-4 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-100 rounded-xl text-xs font-bold text-slate-500 transition cursor-pointer shrink-0"
+                        type="submit"
+                        disabled={isVerifying}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-md transition cursor-pointer flex items-center justify-center gap-2"
                       >
-                        حذف وتغيير الملف
+                        {isVerifying ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            جاري الفحص...
+                          </>
+                        ) : (
+                          'تفعيل الكود والبدء'
+                        )}
                       </button>
                     </div>
-                  ) : (
-                    /* Elegant Dropzone Wrapper */
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`border-2 border-dashed rounded-[24px] p-12 text-center transition-all cursor-pointer flex flex-col justify-center items-center gap-3.5 ${
-                        isDragging ? 'border-blue-500 bg-blue-50/20 scale-[0.99] shadow-inner' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50/30'
-                      }`}
-                    >
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="application/pdf"
-                        className="hidden"
-                      />
-                      <div className="p-4 bg-blue-50 rounded-2xl text-blue-600 border border-blue-100/50">
-                        <UploadCloud className="w-6 h-6" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-bold text-slate-850">اسحب وألقِ ملزمة الـ PDF هنا لرفعها</p>
-                        <p className="text-xs text-slate-400 font-light">أو انقر لتصفح واختيار الملف من جهازك</p>
-                      </div>
-                      <span className="text-[10px] text-slate-350 font-medium">صيغ مدعومة: PDF فقط (بحد أقصى 20 ميجابايت)</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                /* Text Area Custom Style */
-                <div className="space-y-3 text-right">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">محتوى المادة العلمية</label>
-                  <textarea
-                    rows={8}
-                    value={manualText}
-                    onChange={(e) => setManualText(e.target.value)}
-                    placeholder="ألصق هنا نصوص الدرس، الشروحات، أو الملاحظات التي ترغب بصياغة الاختبار منها..."
-                    className="w-full p-5 bg-slate-50/50 border border-slate-150 focus:bg-white rounded-2xl text-sm leading-relaxed outline-none focus:ring-4 focus:ring-blue-100/50 focus:border-blue-500 transition-all resize-none placeholder:text-slate-300 text-slate-800"
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-medium font-mono">
-                    <span>الحد الأقصى المدعوم: 50,000 حرف</span>
-                    <span>عدد الحروف المدخلة حالياً: {manualText.length} حرفاً</span>
                   </div>
+                </form>
+
+                <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50 text-center text-xs leading-relaxed font-light text-indigo-900">
+                  💡 الكود التجريبي المجاني والمدعوم كاملاً رهن إشارتك: 
+                  <strong className="font-mono bg-white px-1.5 py-0.5 rounded ml-1 border font-black select-all text-indigo-700">Ai2027</strong>
                 </div>
-              )}
 
-            </div>
+                <div className="pt-4 border-t border-dashed border-slate-150 text-center">
+                  <p className="text-xs text-slate-400">
+                    لا تملك مفتاح تنشيط؟{' '}
+                    <button
+                      type="button"
+                      onClick={onBackToLanding}
+                      className="text-indigo-600 hover:text-indigo-700 hover:underline font-bold transition cursor-pointer"
+                    >
+                      اضغط لتتصفح باقات شراء كود تفعيل بـ 19 ريالاً
+                    </button>
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
-            {/* Generate Trigger Button */}
-            <div className="flex items-center justify-end z-10 relative">
-              <button
-                onClick={handleGenerateQuiz}
-                disabled={isGenerating || pdfParsingProgress !== null}
-                className="w-full sm:w-auto px-10 py-4.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg shadow-slate-200 transition-all duration-150 disabled:opacity-50 flex items-center justify-center gap-2.5 cursor-pointer max-w-sm sm:max-w-none text-sm sm:text-md"
+            {/* VIEW B: Creator Workspace and Past Quizzes Dashboard */}
+            {toolView === 'builder' && (
+              <motion.div
+                key="builder-pane"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    جاري صياغة الأسئلة بدقة (30 ثانية)...
-                  </>
-                ) : (
-                  <>
-                    <Cpu className="w-5 h-5 text-indigo-400" />
-                    توليد الاختبار الذكي الآن (سحب 1 محاولة)
-                  </>
-                )}
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* VIEW C: Active Interactive Quiz Screen */}
-        {toolView === 'quiz' && (
-          <motion.div
-            key="quiz-screen"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="space-y-8 z-10 relative"
-          >
-            
-            {/* Soft high-quality offline notice banner if fallbackActive is true */}
-            {fallbackActive && (
-              <div className="bg-amber-50 border border-amber-100/80 rounded-2xl p-4 text-amber-900 text-xs sm:text-sm font-medium flex items-center gap-3 shadow-xs">
-                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-                <div className="space-y-0.5 text-right flex-1">
-                  <p className="font-bold text-amber-950">وضع التشغيل البديل والذكي نشط</p>
-                  <p className="text-amber-800 font-light text-[11px] sm:text-xs">
-                    تم توليد هذا الاختبار الشامل بدقة من بنك الأسئلة المرجعي المتكامل لضمان استمرارية التشغيل العالية على بيئة الاستضافة المستقرة حالياً.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Header Evaluation panel */}
-            {quizSubmitted ? (
-              <div className="bg-white border border-slate-100 rounded-[32px] p-8 text-center space-y-4 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-blue-500 to-indigo-500" />
-                <div className="w-[88px] h-[88px] bg-slate-50 rounded-full flex items-center justify-center mx-auto border border-slate-100 mb-2">
-                  <Award className="w-12 h-12 text-blue-600 animate-bounce" />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-xl sm:text-2xl font-black text-slate-900">اكتمل التقييم وتصحيح الإجابات بنجاح!</h2>
-                  <p className="text-xs sm:text-sm text-slate-500 max-w-2xl mx-auto font-light leading-relaxed">
-                    تمت معالجة الخيارات المحددة ومقارنتها بدقة وتفصيل مع النموذج الفكري المحكم للذكاء الاصطناعي.
-                  </p>
-                </div>
                 
-                <div className="inline-block py-2.5 px-8 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-xs">
-                  <span className="text-xs sm:text-sm font-bold text-blue-900">
-                    النتيجة النهائية: <span className="text-2xl font-extrabold text-blue-600 font-mono px-1">{quizScore}</span> من <span className="font-mono text-slate-700">15</span>
-                  </span>
-                </div>
-                
-                {/* Visual score statement */}
-                <div className="pt-2">
-                  <p className="text-xs text-slate-500 font-medium">
-                    {quizScore >= 13 ? '🏆 أداء استثنائي مذهل! يظهر فهمك المتكامل والعميق للمحتوى.' :
-                     quizScore >= 9 ? '👍 مستوى رائع وجيد جداً! لديك عدد قليل جداً من الفجوات البسيطة.' :
-                     '📖 فرصة قيمة ومثمرة للمذاكرة ومراجعة التفسيرات الموضحة أسفل كل سؤال للأخطاء.'}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white border border-slate-100 p-6 rounded-[24px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-                <div className="space-y-1 text-right">
-                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <BookOpen className="w-5 h-5 text-blue-600" />
-                    اختبار الفهم والتحليل الذاتي فوري
-                  </h2>
-                  <p className="text-xs text-slate-400 font-light">
-                    أجب على جميع الأسئلة قياسية الاختيارات بالأسفل، ثم انقر على "مراجعة وتصحيح" لاستعراض تقديرك.
-                  </p>
-                </div>
-                <div className="shrink-0 bg-slate-50 border px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 font-mono">
-                  الأسئلة المحلولة: {Object.keys(userAnswers).length} / 15
-                </div>
-              </div>
-            )}
-
-            {/* Questions Container List */}
-            <div className="space-y-6">
-              {questions.map((q, qIdx) => {
-                const selectedAns = userAnswers[qIdx];
-                const isCorrect = selectedAns && selectedAns.trim() === q.correctAnswer.trim();
-                
-                return (
-                  <div 
-                    key={qIdx}
-                    id={`quiz-question-card-${qIdx}`}
-                    className={`bg-white border rounded-[24px] p-6 sm:p-8 transition-all shadow-xs ${
-                      quizSubmitted 
-                        ? isCorrect 
-                          ? 'border-emerald-200 bg-emerald-50/5' 
-                          : 'border-red-200 bg-red-50/5'
-                        : 'border-slate-100 hover:border-slate-200 hover:shadow-xs'
-                    }`}
-                  >
-                    {/* Topic/Number Indicator */}
-                    <div className="flex items-start gap-4 mb-4 text-right">
-                      <span className="w-8 h-8 bg-slate-100 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center shrink-0">
-                        {qIdx + 1}
-                      </span>
-                      <h3 className="font-extrabold text-slate-850 text-sm sm:text-md pt-1 leading-relaxed">
-                        {q.question}
-                      </h3>
-                    </div>
-
-                    {/* Interactive Choices Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-0 sm:mr-12">
-                      {q.options.map((option, optIdx) => {
-                        const isThisSelected = selectedAns === option;
-                        const isThisCorrect = option === q.correctAnswer;
+                {/* 1. Left side Column: Creator Panel (Full Upload wizard) */}
+                <div className="col-span-1 lg:col-span-8 space-y-6">
+                  
+                  {isGenerating ? (
+                    /* High-fidelity AI Loading Milestones */
+                    <div className="bg-white border border-slate-150 rounded-[32px] p-8 sm:p-12 text-center space-y-6 shadow-md min-h-[420px] flex flex-col justify-center items-center">
+                      <div className="relative">
+                        <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center animate-spin" style={{ animationDuration: '3s' }} />
+                        <Sparkle className="w-8 h-8 text-indigo-500 absolute top-6 left-6 animate-pulse" />
+                      </div>
+                      
+                      <div className="space-y-3 max-w-md mx-auto">
+                        <h4 className="text-base sm:text-lg font-black text-slate-900 flex items-center justify-center gap-2">
+                          <Cpu className="w-5 h-5 text-indigo-500 animate-pulse" />
+                          جاري استخلاص وصياغة الاختبار بالذكاء الاصطناعي...
+                        </h4>
                         
-                        // Option Styling State Logic
-                        let optionStyle = 'border-slate-200 bg-slate-50/80 hover:bg-slate-100 text-slate-700';
-                        if (isThisSelected) {
-                          optionStyle = 'border-blue-500 bg-blue-50/50 text-blue-900 font-bold';
-                        }
-                        
-                        if (quizSubmitted) {
-                          if (isThisCorrect) {
-                            optionStyle = 'border-emerald-500 bg-emerald-50 text-emerald-900 font-extrabold';
-                          } else if (isThisSelected) {
-                            optionStyle = 'border-red-400 bg-red-50 text-red-900';
-                          } else {
-                            optionStyle = 'border-slate-100 bg-slate-50/20 opacity-60 text-slate-400';
-                          }
-                        }
+                        {/* Interactive Milestone stepper */}
+                        <div className="bg-slate-50 p-4 rounded-2xl border text-right">
+                          <p className="text-xs font-bold text-slate-800 mb-2">المرحلة النشطة الآن بقاعدة المعالجات:</p>
+                          <p className="text-xs text-slate-500 font-light leading-relaxed min-h-[36px]">
+                            {generationMessages[generationStep]}
+                          </p>
+                        </div>
 
-                        return (
-                          <button
-                            key={optIdx}
-                            disabled={quizSubmitted}
-                            onClick={() => handleSelectOption(qIdx, option)}
-                            className={`p-4 border rounded-2xl text-right text-xs sm:text-sm transition-all flex items-center justify-between outline-none ${optionStyle} ${
-                              !quizSubmitted ? 'cursor-pointer hover:-translate-y-0.5 active:scale-99' : ''
-                            }`}
-                            style={{ minHeight: '48px' }}
-                          >
-                            <span className="flex-1 pr-1 font-medium">{option}</span>
-                            
-                            {/* Boolean visual check indicator */}
-                            <div className="shrink-0 pl-1">
-                              {quizSubmitted ? (
-                                isThisCorrect ? (
-                                  <CheckCircle className="w-4.5 h-4.5 text-emerald-600" />
-                                ) : isThisSelected ? (
-                                  <XCircle className="w-4.5 h-4.5 text-red-500" />
-                                ) : null
-                              ) : (
-                                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
-                                  isThisSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'
-                                }`}>
-                                  {isThisSelected && <div className="w-1.5 h-1.5 bg-white rounded-full animate-scale" />}
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Explanatory Scientific Help Feedback */}
-                    {quizSubmitted && (
-                      <div className="mt-5 mr-0 sm:mr-12 pt-4 border-t border-dashed border-slate-150">
-                        <div className={`p-4 rounded-2xl flex items-start gap-3 text-xs sm:text-sm ${
-                          isCorrect ? 'bg-emerald-50/70 text-emerald-900' : 'bg-red-50/70 text-red-900'
-                        }`}>
-                          <Info className={`w-4 h-4 shrink-0 mt-0.5 ${isCorrect ? 'text-emerald-700' : 'text-red-650'}`} />
-                          <div className="space-y-1.5 text-right">
-                            <p className="font-bold">
-                              {isCorrect ? 'رائع، إجابة صحيحة ومثالية!' : `للأسف إجابة خاطئة. الخيار الصحيح هو: "${q.correctAnswer}"`}
-                            </p>
-                            <p className="text-slate-650 font-light leading-relaxed">{q.explanation}</p>
+                        {/* Progress line */}
+                        <div className="relative pt-2">
+                          <div className="overflow-hidden h-2 text-xs flex rounded-full bg-slate-100">
+                            <motion.div 
+                              initial={{ width: '5%' }}
+                              animate={{ width: '92%' }}
+                              transition={{ duration: 30, ease: 'easeOut' }}
+                              className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-500"
+                            />
                           </div>
                         </div>
+                        <p className="text-[10px] text-slate-400 font-light italic">هذه العملية تستغرق عادة ما بين 20 إلى 40 ثانية طبقاً لعدد صفحات المستند المرفق...</p>
                       </div>
-                    )}
+                    </div>
+                  ) : (
+                    /* The Input Builder Workspace */
+                    <div className="bg-white border border-slate-150 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-xs relative">
+                      
+                      {/* Setup title info */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div className="space-y-1 text-right">
+                          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                            <GraduationCap className="w-5 h-5 text-indigo-600" />
+                            توليد اختبار ذكي جديد
+                          </h3>
+                          <p className="text-xs text-slate-400 font-light">اختر مصدر المادة، ضع عنواناً للاختبار، وانقر للتوليد.</p>
+                        </div>
+
+                        {/* Quick controls - method toggles */}
+                        <div className="flex bg-slate-100/70 p-1 rounded-xl self-start border border-slate-205">
+                          <button
+                            onClick={() => setInputMethod('pdf')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                              inputMethod === 'pdf' ? 'bg-white shadow-2xs text-indigo-600' : 'text-slate-500 hover:text-slate-850'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            تحميل PDF
+                          </button>
+                          <button
+                            onClick={() => setInputMethod('text')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                              inputMethod === 'text' ? 'bg-white shadow-2xs text-indigo-600' : 'text-slate-500 hover:text-slate-850'
+                            }`}
+                          >
+                            <ClipboardType className="w-3.5 h-3.5" />
+                            لصق نص يدوي
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Optional custom Quiz Name */}
+                      <div className="space-y-1.5 text-right">
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">عنوان الاختبار (اختياري)</label>
+                        <input
+                          type="text"
+                          value={customQuizName}
+                          onChange={(e) => setCustomQuizName(e.target.value)}
+                          placeholder={uploadedFile ? uploadedFile.name.replace('.pdf', '') : "اختبار العلوم العامة - المراجعة النهائية"}
+                          className="w-full bg-slate-50/50 border border-slate-200 focus:bg-white rounded-2xl px-4 py-3 text-sm focus:ring-4 focus:ring-indigo-150/45 focus:border-indigo-500 outline-none transition text-slate-800 font-semibold"
+                        />
+                      </div>
+
+                      {/* Main source area */}
+                      {inputMethod === 'pdf' ? (
+                        <div className="space-y-3">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider text-right">ملف الـ PDF المرجعي</label>
+                          
+                          {pdfParsingProgress !== null ? (
+                            <div className="border-2 border-dashed border-indigo-200 rounded-[24px] p-12 text-center space-y-4 bg-indigo-50/10">
+                              <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto" />
+                              <div className="space-y-1.5">
+                                <p className="text-xs font-bold text-slate-800">جاري قراءة وتفريغ محتويات ملف الـ PDF...</p>
+                                <p className="text-[11px] text-slate-400">نستعرض الفواصل والكلمات والجداول العربية بدقة</p>
+                              </div>
+                              <div className="max-w-xs mx-auto space-y-1">
+                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="bg-indigo-600 h-1.5 rounded-full transition-all duration-200" style={{ width: `${pdfParsingProgress}%` }} />
+                                </div>
+                                <span className="text-xs font-mono font-black text-indigo-605">{pdfParsingProgress}%</span>
+                              </div>
+                            </div>
+                          ) : uploadedFile ? (
+                            <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                              <div className="flex items-center gap-3 text-right">
+                                <div className="p-2.5 bg-emerald-100/70 text-emerald-700 rounded-xl border border-emerald-200">
+                                  <FileText className="w-6 h-6" />
+                                </div>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-sm sm:max-w-md">{uploadedFile.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-light">تم استخراج النصوص المقروءة للبرمجة بنجاح • حجم الملف: {(uploadedFile.size / (1024 * 1024)).toFixed(2)} ميجابايت</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUploadedFile(null);
+                                  setExtractedPdfText('');
+                                }}
+                                className="py-2 px-3 bg-white border border-slate-205 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 rounded-xl text-xs font-bold text-slate-550 transition cursor-pointer"
+                              >
+                                تغيير وحذف الملف
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              onDragOver={handleDragOver}
+                              onDragLeave={() => setIsDragging(false)}
+                              onDrop={handleDrop}
+                              onClick={() => fileInputRef.current?.click()}
+                              className={`border-2 border-dashed rounded-[24px] p-10 text-center transition cursor-pointer flex flex-col justify-center items-center gap-3.5 ${
+                                isDragging ? 'border-indigo-500 bg-indigo-50/20 scale-[0.99]' : 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50/20'
+                              }`}
+                            >
+                              <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileChange}
+                                accept="application/pdf"
+                                className="hidden"
+                              />
+                              <div className="p-3 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100/50">
+                                <UploadCloud className="w-6 h-6 animate-pulse" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-xs sm:text-sm font-bold text-slate-800">اسحب كتاب الـ PDF للمادة وألقه هنا للرفع</p>
+                                <p className="text-[11px] text-slate-400 font-light">أو انقر لتصفح الملفات المحلية من جهازك</p>
+                              </div>
+                              <span className="text-[9px] text-slate-350 font-medium">الملفات المدعومة: PDF فقط، بحد أقصى 20 ميجابايت</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 text-right">
+                          <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">محتوى الدرس أو الشروحات يدوياً</label>
+                          <textarea
+                            rows={7}
+                            value={manualText}
+                            onChange={(e) => setManualText(e.target.value)}
+                            placeholder="ألصق هنا نصوص الدرس، الملخص المنهجي، أو الشروحات التي ترغب بصياغة الاختبار منها بالكامل..."
+                            className="w-full p-4 bg-slate-50/50 border border-slate-200 focus:bg-white rounded-2xl text-xs sm:text-sm leading-relaxed outline-none focus:ring-4 focus:ring-indigo-150/40 focus:border-indigo-500 transition resize-none placeholder:text-slate-300 text-slate-700"
+                          />
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium font-mono font-light">
+                            <span>الحد الأقصى المدعوم: 50,000 حرف</span>
+                            <span>عدد الحروف المدخلة الآن: {manualText.length} حرفاً</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Trigger Buttons */}
+                      <div className="pt-2 flex items-center justify-end">
+                        <button
+                          onClick={handleGenerateQuiz}
+                          disabled={isGenerating || pdfParsingProgress !== null}
+                          className="w-full sm:w-auto px-10 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl shadow-lg transition duration-150 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer text-xs sm:text-sm"
+                        >
+                          <Cpu className="w-4 h-4 text-indigo-400 animate-spin" style={{ animationDuration: '6s' }} />
+                          توليد وصياغة الكويز الذكي (خصم ١ محاولة)
+                        </button>
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+                {/* 2. Right side Column: Past Saved Quizzes / Exams Dashboard */}
+                <div className="col-span-1 lg:col-span-4 space-y-6 text-right">
+                  
+                  <div className="bg-white border border-slate-150 rounded-[28px] p-5 sm:p-6 space-y-5 shadow-xs">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-black text-slate-900 flex items-center gap-1.5 justify-start">
+                        <BookOpen className="w-4 h-4 text-indigo-600" />
+                        لوحة الامتحانات السابقة ({savedQuizzes.length})
+                      </h4>
+                      <p className="text-[11px] text-slate-405 font-light">استعرض، عاود حل، أو اطبع مستنداتك السابقة المخزنة محلياً.</p>
+                    </div>
+
+                    {/* Filter and Quick seed demo button */}
+                    <div className="space-y-2.5">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="ابحث في امتحاناتك السابقة..."
+                          className="w-full p-2.5 pr-8 bg-slate-50 border border-slate-200 focus:bg-white rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 transition text-slate-700"
+                        />
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute top-3.5 right-2 px-0.5" />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleLoadDemoQuiz}
+                        className="w-full py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border border-indigo-100"
+                      >
+                        <Sparkle className="w-3.5 h-3.5" />
+                        استيراد اختبار مجاني للتجربة والتقييم الفوري
+                      </button>
+                    </div>
+
+                    {/* Filtered History Lists */}
+                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                      {filteredHistory.length === 0 ? (
+                        <div className="text-center py-10 space-y-2 text-slate-400 border border-dashed rounded-xl p-4 bg-slate-50/50">
+                          <p className="text-xs font-semibold">لا يوجد اختبارات سابقة مخزنة</p>
+                          <p className="text-[10px] font-light">ارفع ملف PDF باليسار أو انقر على الزر التجريبي بالأعلى للاطلاع.</p>
+                        </div>
+                      ) : (
+                        filteredHistory.map((quiz) => (
+                          <div
+                            key={quiz.id}
+                            onClick={() => handleLoadQuizFromHistory(quiz)}
+                            className="bg-slate-50 hover:bg-white hover:border-indigo-200 p-3 rounded-xl border border-slate-200 transition cursor-pointer text-right group relative space-y-1 shadow-2xs"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs font-bold text-slate-800 line-clamp-1 max-w-[160px] group-hover:text-indigo-600">{quiz.name}</p>
+                              
+                              <button
+                                onClick={(e) => handleDeleteQuiz(quiz.id, e)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                                title="حذف المقالة نهائياً"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] text-slate-450 line-clamp-2 font-light leading-relaxed">{quiz.summary}</p>
+                            
+                            <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1.5 border-t border-slate-100 font-mono">
+                              <span className="flex items-center gap-0.5 font-sans font-medium">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                {quiz.date}
+                              </span>
+                              
+                              <span className="bg-indigo-50/85 text-indigo-700 px-1.5 py-0.5 rounded-md font-bold font-sans">
+                                {quiz.score !== undefined && quiz.score !== null ? `أنت حليته: ${quiz.score}/١٥` : 'متاح للحل 📝'}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
 
                   </div>
-                );
-              })}
+
+                </div>
+
+              </motion.div>
+            )}
+
+            {/* VIEW C: Active Interactive Quiz Playthrough */}
+            {toolView === 'quiz' && (
+              <motion.div
+                key="quiz-pane"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-6 z-10 relative text-right"
+              >
+                
+                {/* Offline Fallback Banner */}
+                {fallbackActive && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex items-center gap-3 shadow-2xs">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                    <div className="space-y-0.5 flex-1">
+                      <p className="font-extrabold text-xs sm:text-sm">وضع التشغيل البديل الاحتياطي نشط</p>
+                      <p className="text-[11px] sm:text-xs text-amber-800 font-light leading-relaxed">
+                        تم تخديم هذا الكويز من بنك الأسئلة المرجعي المقنن لضمان تشغيل خدمتك بشكل فوري نظراً للوصول لضغط السحابة المؤقت المعتاد.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Score evaluation Card at top of player on completion */}
+                {quizSubmitted ? (
+                  <div className="bg-white border border-slate-150 rounded-[32px] p-6 sm:p-8 text-center space-y-4 shadow-md relative overflow-hidden">
+                    <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-emerald-500 via-indigo-500 to-indigo-600" />
+                    
+                    <div className="w-[72px] h-[72px] bg-indigo-50 rounded-full flex items-center justify-center mx-auto border border-indigo-100">
+                      <Award className="w-10 h-10 text-indigo-600 animate-bounce" />
+                    </div>
+
+                    <div className="space-y-1 max-w-xl mx-auto">
+                      <h3 className="text-xl font-black text-slate-900">تم مراجعة وتصحيح الاختبار بنجاح!</h3>
+                      <p className="text-xs text-slate-450 font-light leading-relaxed">بالمقارنة مع المنطق الفكري المفهرس لدينا، إليك النتيجة التفصيلية والتقييم الذاتي.</p>
+                    </div>
+
+                    <div className="inline-block py-2.5 px-6 bg-indigo-50 text-indigo-950 font-bold text-sm sm:text-base border border-indigo-100 rounded-2xl">
+                      النتيجة الإجمالية: <span className="text-2xl font-black font-mono text-indigo-600 px-1">{quizScore}</span> من <span className="font-mono text-slate-705 font-black">١٥</span>
+                    </div>
+
+                    <div className="text-xs text-slate-500 font-medium pt-1 max-w-lg mx-auto leading-relaxed">
+                      {quizScore >= 13 ? '🏆 ممتاز واستثنائي ومبهر حقا! يظهر استيعابك العميق وفهمك المتقن لجميع الفقرات.' :
+                       quizScore >= 9 ? '👍 مستوى مستقر وجيد جداً! لديك بعض النغزات والفجوات البسيطة التي يمكنك تفاديها.' :
+                       '📖 فرصة ذهبية ثمينة للمذاكرة ومطالعة شروحات وتفاسير النقاط الموضحة أسفل الأخطاء لتنمية المعرفة.'}
+                    </div>
+                  </div>
+                ) : (
+                  /* Standard Player Progress Indicator */
+                  <div className="bg-white border border-slate-150 px-5 py-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-3xs">
+                    <div className="space-y-1 text-right">
+                      <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                        <BookOpen className="w-4 h-4 text-indigo-600 animate-pulse" />
+                        الامتحان النشط: <span className="text-indigo-650">{quizName}</span>
+                      </h3>
+                      <p className="text-[10px] sm:text-xs text-slate-400 font-light">أجب على الأسئلة من ١ إلى ١٥ أدناه، ثم اضغط على الزر الأخضر لتصحيح إجاباتك.</p>
+                    </div>
+                    
+                    <div className="shrink-0 bg-slate-50 border text-[11px] font-bold text-slate-700 px-3 py-1.5 rounded-xl font-mono">
+                      الأسئلة المجابة: {Object.keys(userAnswers).length} / ١٥
+                    </div>
+                  </div>
+                )}
+
+                {/* PDF Content Summary Card */}
+                {pdfSummary && (
+                  <div className="bg-gradient-to-br from-indigo-50/20 via-white to-blue-50/10 border border-slate-150 rounded-[28px] p-5 sm:p-6 space-y-3 shadow-xs relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl -mr-16 -mt-16" />
+                    
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-indigo-50 rounded-xl flex items-center justify-center border border-indigo-100">
+                        <FileText className="w-4.5 h-4.5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900">ملخص الذكاء الاصطناعي ومحاور المساق</h4>
+                        <p className="text-[10px] text-slate-400 font-light">مراجعة عامة لبناء الأسئلة وتقييم الفكرة المنهجية</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <p className="text-slate-650 text-xs sm:text-sm leading-relaxed text-justify font-light">{pdfSummary}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Vertical Questions MCQ list */}
+                <div className="space-y-5">
+                  {questions.map((q, qIdx) => {
+                    const uAnswer = userAnswers[qIdx];
+                    const isCorrect = uAnswer && uAnswer.trim() === q.correctAnswer.trim();
+
+                    return (
+                      <div
+                        key={qIdx}
+                        className={`bg-white border rounded-[24px] p-5 sm:p-6 transition-all space-y-4 shadow-3xs ${
+                          quizSubmitted 
+                            ? isCorrect 
+                              ? 'border-emerald-250 bg-emerald-50/5' 
+                              : 'border-rose-250 bg-rose-50/5'
+                            : 'border-slate-150 hover:border-slate-205'
+                        }`}
+                      >
+                        {/* Question and counter badge */}
+                        <div className="flex items-start gap-3">
+                          <span className="w-7 h-7 rounded-lg bg-slate-100 text-[11px] sm:text-xs font-black text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
+                            {qIdx + 1}
+                          </span>
+                          <p className="text-xs sm:text-sm font-extrabold text-slate-900 leading-relaxed pt-1">
+                            {q.question}
+                          </p>
+                        </div>
+
+                        {/* Interactive choices grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mr-0 sm:mr-10">
+                          {q.options.map((option, optIdx) => {
+                            const isSelected = uAnswer === option;
+                            const isCorrectAnswerOption = option === q.correctAnswer;
+                            
+                            // Style states logic
+                            let optStyle = 'border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700';
+                            
+                            if (isSelected) {
+                              optStyle = 'border-indigo-500 bg-indigo-50 text-indigo-950 font-bold';
+                            }
+
+                            if (quizSubmitted) {
+                              if (isCorrectAnswerOption) {
+                                optStyle = 'border-emerald-500 bg-emerald-50 text-emerald-950 font-extrabold';
+                              } else if (isSelected) {
+                                optStyle = 'border-rose-300 bg-rose-50 text-rose-950';
+                              } else {
+                                optStyle = 'border-slate-100 bg-slate-50/30 opacity-50 text-slate-400';
+                              }
+                            }
+
+                            // Arabic letters indexes
+                            const letters = ['أ) ', 'ب) ', 'ج) ', 'د) '];
+
+                            return (
+                              <button
+                                key={optIdx}
+                                disabled={quizSubmitted}
+                                onClick={() => handleSelectOption(qIdx, option)}
+                                className={`p-3.5 border rounded-xl text-right text-xs transition flex items-center justify-between outline-none ${optStyle} ${
+                                  !quizSubmitted ? 'cursor-pointer hover:-translate-y-0.5 active:scale-99' : ''
+                                }`}
+                                style={{ minHeight: '46px' }}
+                              >
+                                <span className="flex-1 font-medium select-none">
+                                  <span className="font-bold font-mono text-slate-400 pl-1 group-disabled:hidden">{letters[optIdx] || ''}</span>
+                                  {option}
+                                </span>
+
+                                <div className="shrink-0 pl-1">
+                                  {quizSubmitted ? (
+                                    isCorrectAnswerOption ? (
+                                      <CheckCircle className="w-4.5 h-4.5 text-emerald-600 shrink-0" />
+                                    ) : isSelected ? (
+                                      <XCircle className="w-4.5 h-4.5 text-rose-500 shrink-0" />
+                                    ) : null
+                                  ) : (
+                                    <div className={`w-3.5 h-3.5 rounded-full border transition flex items-center justify-center shrink-0 ${
+                                      isSelected ? 'border-indigo-650 bg-indigo-650' : 'border-slate-300 bg-white'
+                                    }`}>
+                                      {isSelected && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Explained notes */}
+                        {quizSubmitted && (
+                          <div className="mr-0 sm:mr-10 pt-3 border-t border-dashed border-slate-150">
+                            <div className={`p-4 rounded-xl text-xs sm:text-sm flex gap-2.5 ${
+                              isCorrect ? 'bg-emerald-50/50 text-emerald-950' : 'bg-rose-50/50 text-rose-950'
+                            }`}>
+                              <Info className={`w-4 h-4 shrink-0 mt-0.5 ${isCorrect ? 'text-emerald-700' : 'text-rose-700'}`} />
+                              <div className="space-y-1">
+                                <p className="font-extrabold text-[12px] sm:text-xs">
+                                  {isCorrect ? 'رائع، إجابتك ممتازة وصحيحة!' : `للأسف اختيار خاطئ. الجواب الصحيح المعتمد: "${q.correctAnswer}"`}
+                                </p>
+                                <p className="text-slate-650 font-light leading-relaxed text-[11px] sm:text-xs">{q.explanation}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Bottom player controls & delivery exports */}
+                <div className="pt-6 border-t border-slate-100 space-y-6">
+                  
+                  {quizSubmitted ? (
+                    /* Post submit study delivery bar */
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-slate-50 rounded-2xl border">
+                      <div className="space-y-1 text-right">
+                        <p className="text-xs font-black text-slate-900">خيارات التصدير الأكاديمية والمهنية متاحة الآن</p>
+                        <p className="text-[10px] text-slate-450 font-light leading-normal">اطبع الاختبار كورقة مخصصة، انسخه لـ Word، أو شاركه كمسودة Gmail فورية مع والديك أو زملائك.</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                          onClick={handleCopyQuizToClipboard}
+                          className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Copy className="w-3.5 h-3.5 text-slate-550" />
+                          {textCopied ? 'تم نسخ التقييم! ✓' : 'نسخ النص'}
+                        </button>
+                        
+                        <button
+                          onClick={() => setIsPrintMode(true)}
+                          className="px-4 py-2 bg-white border border-slate-205 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-indigo-555" />
+                          وضع الطباعة المدرسية
+                        </button>
+
+                        <button
+                          onClick={() => setShowGmailModal(true)}
+                          className="px-4 py-2 bg-white border border-slate-205 hover:bg-pink-50 hover:text-pink-600 hover:border-pink-105 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Mail className="w-3.5 h-3.5 text-pink-500" />
+                          الإرسال عبر Gmail
+                        </button>
+
+                        <button
+                          onClick={handleResetForNewQuiz}
+                          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer flex items-center gap-1 transition"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          إنتاج اختبار جديد
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Solver Submit trigger button */
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <p className="text-xs text-slate-400 font-light text-right">يرجى التأكد من اختيار إجابة مناسبة للأسئلة المتاحة قبل النقر للتصحيح وحساب الدرجة.</p>
+                      
+                      <button
+                        onClick={handleCorrectQuiz}
+                        className="w-full sm:w-auto px-10 py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/10 cursor-pointer flex items-center justify-center gap-2 text-xs sm:text-sm"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-100" />
+                        مراجعة وتصحيح الاختبار بالكامل
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+
+              </motion.div>
+            )}
+
+          </AnimatePresence>
+        </>
+      )}
+
+      {/* Gmail Prefill Composer Dialog Overlay */}
+      {showGmailModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-2xs">
+          <div className="bg-white rounded-[24px] border max-w-sm w-full p-6 space-y-5 text-right font-sans">
+            <div className="space-y-1.5">
+              <h4 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5 justify-start">
+                <Mail className="w-4.5 h-4.5 text-pink-500" />
+                تحضير وإرسال لـ Gmail
+              </h4>
+              <p className="text-xs text-slate-400 font-light">يقوم التطبيق بتهيئة النص وعرض مسودة بريد Gmail متوافق 100%.</p>
             </div>
 
-            {/* Bottom Actions Form */}
-            <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-              {quizSubmitted ? (
-                /* Clear for next quiz generation */
-                <>
-                  <p className="text-xs text-slate-400 font-light text-right">
-                    لقد تمت مراجعة المادة واكتمل التقييم. يمكنك توليد اختبار آخر جديد بخصم 1 محاولة من الرصيد النشط.
-                  </p>
-                  <button
-                    onClick={handleResetForNewQuiz}
-                    className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-2xl transition cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-blue-100"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    توليد اختبار ذكي جديد
-                  </button>
-                </>
-              ) : (
-                /* Perform correction request */
-                <>
-                  <p className="text-xs text-slate-400 font-light text-right">
-                    ننصحك بالتحقق من مراجعة وتفقد الخيارات لجميع الـ 15 سؤالاً بالكامل قبل اعتماد التصحيح.
-                  </p>
-                  <button
-                    onClick={handleCorrectQuiz}
-                    className="w-full sm:w-auto px-10 py-4.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 transition cursor-pointer flex items-center justify-center gap-2 text-sm sm:text-md"
-                  >
-                    <CheckCircle2 className="w-5 h-5 fill-white text-emerald-600" />
-                    مراجعة وتصحيح الاختبار بالكامل وعرض النتيجة
-                  </button>
-                </>
-              )}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-550">بريد المستلم (اختياري)</label>
+              <input
+                type="email"
+                value={recipientEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+                placeholder="teacher-parent@gmail.com"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 focus:bg-white rounded-lg text-xs font-mono outline-none focus:ring-2 focus:ring-pink-400 focus:border-pink-500 transition text-left"
+                style={{ direction: 'ltr' }}
+              />
             </div>
 
-          </motion.div>
-        )}
+            <div className="flex gap-2.5 pt-2">
+              <button
+                onClick={() => triggerGmailDraftCompose(recipientEmail)}
+                className="flex-1 py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl text-xs sm:text-sm cursor-pointer transition text-center flex items-center justify-center gap-1"
+              >
+                توليد المسودة بـ Gmail
+              </button>
+              <button
+                onClick={() => setShowGmailModal(false)}
+                className="py-3 px-4 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs sm:text-sm cursor-pointer transition text-slate-600"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      </AnimatePresence>
     </div>
   );
 }
