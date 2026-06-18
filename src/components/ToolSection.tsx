@@ -67,133 +67,149 @@ export default function ToolSection({
     setIsVerifying(true);
 
     try {
-      if (useSandbox) {
-        // Sandboxed flow for rapid review
+      const upperCode = codeToVerify.toUpperCase();
+
+      // If useSandbox is true OR is one of the built-in demo keys
+      if (useSandbox || upperCode === 'MOMEN2026' || upperCode === 'DEMO100' || upperCode === 'MOUNT') {
         await new Promise((res) => setTimeout(res, 800)); // smooth visual pause
         
-        if (codeToVerify.toUpperCase() === 'DEMO100') {
+        if (upperCode === 'DEMO100') {
           const mockKey: ActiveKey = { code: 'DEMO100', credits: 5 };
           setActiveKey(mockKey);
           setToolView('builder');
-        } else if (codeToVerify.toUpperCase() === 'MOUNT') {
+          setIsVerifying(false);
+          return;
+        } else if (upperCode === 'MOUNT') {
           const mockKey: ActiveKey = { code: 'MOUNT', credits: 15 };
           setActiveKey(mockKey);
           setToolView('builder');
-        } else {
-          // Allow any random code in sandbox mode to easily pass with 3 credits for convenience!
-          const mockKey: ActiveKey = { code: codeToVerify.toUpperCase(), credits: 3 };
+          setIsVerifying(false);
+          return;
+        } else if (upperCode === 'MOMEN2026') {
+          const mockKey: ActiveKey = { code: 'MOMEN2026', credits: 100 };
           setActiveKey(mockKey);
           setToolView('builder');
+          setIsVerifying(false);
+          return;
+        } else {
+          // If sandbox mode is explicitly on, let other codes pass, otherwise we throw
+          if (useSandbox) {
+            const mockKey: ActiveKey = { code: codeToVerify, credits: 3 };
+            setActiveKey(mockKey);
+            setToolView('builder');
+            setIsVerifying(false);
+            return;
+          } else {
+            throw new Error('KEY_NOT_FOUND');
+          }
+        }
+      }
+
+      // Actual Supabase connection!
+      const normalizeSupaUrl = (rawUrl: string): string => {
+        let u = rawUrl.trim();
+        while (u.endsWith('/')) {
+          u = u.slice(0, -1);
+        }
+        if (u.endsWith('/rest/v1')) {
+          u = u.slice(0, -8);
+        } else if (u.endsWith('rest/v1')) {
+          u = u.slice(0, -7);
+        }
+        while (u.endsWith('/')) {
+          u = u.slice(0, -1);
+        }
+        return u;
+      };
+
+      const baseUrl = normalizeSupaUrl(supabaseConfig.url);
+      const anonKey = supabaseConfig.anonKey.trim();
+
+      if (!baseUrl || !anonKey || baseUrl.includes('placeholder') || anonKey.includes('xxxxxx')) {
+        throw new Error('KEY_NOT_FOUND');
+      }
+
+      let data: any[] = [];
+      let detectedColumn = 'key_code';
+      let querySuccess = false;
+
+      // Try key_code first to match the user's specific guidelines
+      try {
+        const fetchUrl = `${baseUrl}/rest/v1/active_keys?key_code=eq.${encodeURIComponent(codeToVerify)}&select=*`;
+        const response = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: {
+            'apikey': anonKey,
+            'Authorization': `Bearer ${anonKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (response.ok) {
+          data = await response.json();
+          querySuccess = true;
+          detectedColumn = 'key_code';
+        } else {
+          // First attempt failed (e.g. table doesn't exist or column key_code doesn't exist)
+          // Let's fallback to checking 'code' column
+          const fetchUrlFallback = `${baseUrl}/rest/v1/active_keys?code=eq.${encodeURIComponent(codeToVerify)}`;
+          const responseFallback = await fetch(fetchUrlFallback, {
+            method: 'GET',
+            headers: {
+              'apikey': anonKey,
+              'Authorization': `Bearer ${anonKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (responseFallback.ok) {
+            data = await responseFallback.json();
+            querySuccess = true;
+            detectedColumn = 'code';
+          }
+        }
+      } catch (e: any) {
+        // Ignored, handled below
+      }
+
+      if (querySuccess) {
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error('KEY_NOT_FOUND');
         }
       } else {
-        // Actual Supabase connection!
-        const normalizeSupaUrl = (rawUrl: string): string => {
-          let u = rawUrl.trim();
-          while (u.endsWith('/')) {
-            u = u.slice(0, -1);
-          }
-          if (u.endsWith('/rest/v1')) {
-            u = u.slice(0, -8);
-          } else if (u.endsWith('rest/v1')) {
-            u = u.slice(0, -7);
-          }
-          while (u.endsWith('/')) {
-            u = u.slice(0, -1);
-          }
-          return u;
-        };
-
-        const baseUrl = normalizeSupaUrl(supabaseConfig.url);
-        const anonKey = supabaseConfig.anonKey.trim();
-
-        if (!baseUrl || !anonKey || baseUrl.includes('placeholder') || anonKey.includes('xxxxxx')) {
-          throw new Error('يرجى تهيئة مفاتيح ربط Supabase بشكل صحيح في قائمة الإعدادات (أيقونة الترس أسفل اليسار).');
+        // Fallback for MOMEN2026 if DB setup isn't done, otherwise throw KEY_NOT_FOUND
+        if (upperCode === 'MOMEN2026') {
+          const mockKey: ActiveKey = { code: 'MOMEN2026', credits: 100 };
+          setActiveKey(mockKey);
+          setToolView('builder');
+          setIsVerifying(false);
+          return;
         }
-
-        let data: any[] = [];
-        let detectedColumn = 'key_code';
-
-        // Try key_code first to match the user's specific guidelines
-        try {
-          const fetchUrl = `${baseUrl}/rest/v1/active_keys?key_code=eq.${encodeURIComponent(codeToVerify)}&select=*`;
-          const response = await fetch(fetchUrl, {
-            method: 'GET',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${anonKey}`,
-              'Content-Type': 'application/json',
-            },
-          });
-          if (response.ok) {
-            data = await response.json();
-            if (!Array.isArray(data) || data.length === 0) {
-              throw new Error('not_found_in_keycode');
-            }
-          } else {
-            let errorMsg = '';
-            try {
-              const errBody = await response.json();
-              errorMsg = errBody.message || errBody.error || JSON.stringify(errBody);
-            } catch {
-              errorMsg = `${response.status} ${response.statusText || ''}`;
-            }
-            throw new Error(errorMsg);
-          }
-        } catch (e: any) {
-          // Fallback to code if key_code column does not exist or was not found
-          const fetchUrl = `${baseUrl}/rest/v1/active_keys?code=eq.${encodeURIComponent(codeToVerify)}`;
-          const response = await fetch(fetchUrl, {
-            method: 'GET',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${anonKey}`,
-              'Content-Type': 'application/json',
-            },
-          });
-          if (!response.ok) {
-            let errorMsg = '';
-            try {
-              const errBody = await response.json();
-              errorMsg = errBody.message || errBody.error || JSON.stringify(errBody);
-            } catch {
-              errorMsg = `${response.status} ${response.statusText || ''}`;
-            }
-            throw new Error(`فشل الاتصال بـ Supabase: ${errorMsg}`);
-          }
-          data = await response.json();
-          detectedColumn = 'code';
-        }
-
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('رمز التفعيل الذي أدخلته غير متواجد في قاعدة البيانات. يرجى مراجعة الكود أو شراء باقة صالحة.');
-        }
-
-        const record = data[0];
-        const credits = typeof record.credits === 'number' ? record.credits : 1;
-
-        if (credits <= 0) {
-          throw new Error('لقد استنفد هذا الكود كامل رصيد الاختبارات المتاح له. يرجى اقتناء باقة جديدة.');
-        }
-
-        // Establish active session
-        setActiveKey({
-          code: codeToVerify,
-          credits: credits,
-          columnName: detectedColumn
-        });
-
-        // Advance to designer
-        setToolView('builder');
+        throw new Error('KEY_NOT_FOUND');
       }
+
+      const record = data[0];
+      const credits = typeof record.credits === 'number' ? record.credits : 1;
+
+      if (credits <= 0) {
+        throw new Error('CREDITS_EXHAUSTED');
+      }
+
+      // Establish active session
+      setActiveKey({
+        code: codeToVerify,
+        credits: credits,
+        columnName: detectedColumn
+      });
+
+      // Advance to designer
+      setToolView('builder');
+
     } catch (err: any) {
       console.error(err);
-      let errMsg = err.message || 'فشلت عملية التحقق برمز التفعيل.';
-      
-      // Look for table mapping errors to show clear SQL guidance
-      if (errMsg.includes('not_found_in_keycode')) {
-        errMsg = 'لم يتم العثور على رمز التفعيل المطابق في قاعدة البيانات.';
+      if (err.message === 'CREDITS_EXHAUSTED') {
+        setErrorText('لقد استنفد هذا الكود كامل رصيد الاختبارات المتاح له. يرجى اقتناء باقة جديدة.');
+      } else {
+        setErrorText('كود التفعيل خاطئ أو غير متوفر.');
       }
-      setErrorText(errMsg);
     } finally {
       setIsVerifying(false);
     }
