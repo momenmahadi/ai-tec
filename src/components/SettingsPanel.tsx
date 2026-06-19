@@ -32,16 +32,6 @@ export default function SettingsPanel({
 
   return (
     <>
-      {/* Floating Settings Button */}
-      <button
-        id="settings-trigger-btn"
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 left-6 z-50 p-3.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 rounded-full shadow-xl border border-slate-200 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95"
-        title="إعدادات النظام"
-      >
-        <Settings className="w-5.5 h-5.5 animate-spin-hover" />
-      </button>
-
       {/* Backdrop */}
       {isOpen && (
         <div
