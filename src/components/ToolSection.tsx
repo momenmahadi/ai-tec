@@ -13,6 +13,7 @@ import {
 import { Question, SupabaseConfig, ActiveKey } from '../types';
 import { extractTextFromPdf } from '../utils/pdfParser';
 import { overlayAnswersOnPdf } from '../utils/pdfOverlay';
+import { getSupabaseClient, getOrCreateProfile, redeemKeyCode } from '../utils/supabase';
 
 interface SavedQuiz {
   id: string;
@@ -274,6 +275,15 @@ export default function ToolSection({
   const [toolView, setToolView] = useState<'activate' | 'builder' | 'quiz'>('activate');
   const [activationCode, setActivationCode] = useState('');
   const [activeKey, setActiveKey] = useState<ActiveKey | null>(null);
+
+  // Authentication & Credits
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; credits: number } | null>(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   
   // Builder Input States
   const [inputMethod, setInputMethod] = useState<'pdf' | 'text'>('pdf');
@@ -408,127 +418,203 @@ export default function ToolSection({
     'تدقيق الإجابات وصياغة تفاسير المراجع لكل سؤال بهيكلة أكاديمية واضحة...'
   ];
 
-  // 1. Activation Handling (built-in keys: AI2027, DEMO100, MOUNT)
+  // Check active Supabase Auth Session on Mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+        const { data: { session } } = await client.auth.getSession();
+        if (session && session.user) {
+          const profile = await getOrCreateProfile(client, session.user.id, session.user.email || '');
+          setCurrentUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            credits: profile?.credits ?? 10
+          });
+          setActiveKey({
+            code: 'حساب مسجل',
+            credits: profile?.credits ?? 10
+          });
+        }
+      } catch (err) {
+        console.warn('Session restoration failed or local sandbox is active:', err);
+      }
+    };
+    checkSession();
+  }, [supabaseConfig]);
+
+  // Handle email/password sign-in and registration
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthSuccessMsg(null);
+    setAuthLoading(true);
+
+    try {
+      const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+      
+      if (isSignUp) {
+        const { data, error } = await client.auth.signUp({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          const profile = await getOrCreateProfile(client, data.user.id, data.user.email || '');
+          setCurrentUser({
+            id: data.user.id,
+            email: data.user.email || '',
+            credits: profile?.credits ?? 10
+          });
+          setActiveKey({
+            code: 'حساب مسجل',
+            credits: profile?.credits ?? 10
+          });
+          setAuthSuccessMsg('تم إنشاء حسابك وتفعيله بنجاح! ✓');
+        }
+      } else {
+        const { data, error } = await client.auth.signInWithPassword({
+          email: authEmail,
+          password: authPassword,
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+          const profile = await getOrCreateProfile(client, data.user.id, data.user.email || '');
+          setCurrentUser({
+            id: data.user.id,
+            email: data.user.email || '',
+            credits: profile?.credits ?? 10
+          });
+          setActiveKey({
+            code: 'حساب مسجل',
+            credits: profile?.credits ?? 10
+          });
+          setAuthSuccessMsg('تم تسجيل الدخول بنجاح! ✓');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAuthError(err.message || 'حدث خطأ أثناء الاتصال بقاعدة البيانات. تأكد من صحة بيانات الدخول.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Login as guest for instant sandbox access
+  const handleGuestLogin = () => {
+    const guestUser = {
+      id: 'mock-guest-id-123',
+      email: authEmail.trim() || 'guest@example.com',
+      credits: 15
+    };
+    setCurrentUser(guestUser);
+    setActiveKey({
+      code: 'ضيف تجريبي',
+      credits: 15
+    });
+    setAuthSuccessMsg('تم الدخول كضيف تجريبي للتجربة السريعة! ✓');
+  };
+
+  // Logout session
+  const handleLogout = async () => {
+    try {
+      const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+      await client.auth.signOut();
+    } catch (e) {}
+    setCurrentUser(null);
+    setActiveKey(null);
+    setAuthSuccessMsg(null);
+    setAuthError(null);
+    setToolView('activate');
+  };
+
+  // Redeems/Activates Key handler
   const handleVerifyKey = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError(null);
+    setAuthSuccessMsg(null);
     setErrorText(null);
 
     const codeToVerify = activationCode.trim();
     if (!codeToVerify) {
-      setErrorText('يرجى إدخال كود التفعيل أولاً.');
+      setErrorText('يرجى كتابة الكود أولاً.');
+      return;
+    }
+
+    const upperCode = codeToVerify.toUpperCase();
+
+    // Support legacy builtin keys or sandbox mode for direct access
+    if (useSandbox || upperCode === 'AI2027' || upperCode === 'DEMO100' || upperCode === 'MOUNT') {
+      setIsVerifying(true);
+      await new Promise((res) => setTimeout(res, 600));
+      let credits = 15;
+      if (upperCode === 'DEMO100') credits = 5;
+      else if (upperCode === 'MOUNT') credits = 15;
+      else if (upperCode === 'AI2027') credits = 5;
+      else if (useSandbox) credits = 3;
+
+      const mockKey: ActiveKey = { code: upperCode, credits };
+      setActiveKey(mockKey);
+      
+      // Seed a guest user if logged out
+      if (!currentUser) {
+        setCurrentUser({
+          id: 'mock-guest-id-123',
+          email: 'guest@example.com',
+          credits: credits
+        });
+      } else {
+        setCurrentUser({
+          ...currentUser,
+          credits: currentUser.credits + credits
+        });
+      }
+
+      setAuthSuccessMsg(`تم تفعيل الكود التجريبي المجاني بنجاح! وإضافة ${credits} رصيد.`);
+      setIsVerifying(false);
+      setActivationCode('');
+      return;
+    }
+
+    if (!currentUser) {
+      setErrorText('يرجى تسجيل الدخول أولاً لشحن المفتاح ببريدك الجاري!');
       return;
     }
 
     setIsVerifying(true);
 
     try {
-      const upperCode = codeToVerify.toUpperCase();
-
-      if (useSandbox || upperCode === 'AI2027' || upperCode === 'DEMO100' || upperCode === 'MOUNT') {
-        await new Promise((res) => setTimeout(res, 800)); // Smooth loading pause
-        
-        let credits = 15;
-        if (upperCode === 'DEMO100') credits = 5;
-        else if (upperCode === 'MOUNT') credits = 15;
-        else if (upperCode === 'AI2027') credits = 5;
-        else if (useSandbox) credits = 3;
-
-        const mockKey: ActiveKey = { code: upperCode, credits };
-        setActiveKey(mockKey);
-        setToolView('builder');
-        return;
-      }
-
-      // Live Supabase verification
-      const normalizeSupaUrl = (rawUrl: string): string => {
-        let u = rawUrl.trim();
-        while (u.endsWith('/')) u = u.slice(0, -1);
-        if (u.endsWith('/rest/v1')) u = u.slice(0, -8);
-        else if (u.endsWith('rest/v1')) u = u.slice(0, -7);
-        while (u.endsWith('/')) u = u.slice(0, -1);
-        return u;
-      };
-
-      const baseUrl = normalizeSupaUrl(supabaseConfig.url);
-      const anonKey = supabaseConfig.anonKey.trim();
-
-      if (!baseUrl || !anonKey || baseUrl.includes('placeholder') || anonKey.includes('xxxxxx')) {
-        throw new Error('KEY_NOT_FOUND');
-      }
-
-      let data: any[] = [];
-      let detectedColumn = 'key_code';
-      let querySuccess = false;
-
-      try {
-        const fetchUrl = `${baseUrl}/rest/v1/active_keys?key_code=eq.${encodeURIComponent(codeToVerify)}&select=*`;
-        const response = await fetch(fetchUrl, {
-          method: 'GET',
-          headers: {
-            'apikey': anonKey,
-            'Authorization': `Bearer ${anonKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        if (response.ok) {
-          data = await response.json();
-          querySuccess = true;
-          detectedColumn = 'key_code';
-        } else {
-          // Fallback check code column
-          const fetchUrlFallback = `${baseUrl}/rest/v1/active_keys?code=eq.${encodeURIComponent(codeToVerify)}`;
-          const responseFallback = await fetch(fetchUrlFallback, {
-            method: 'GET',
-            headers: {
-              'apikey': anonKey,
-              'Authorization': `Bearer ${anonKey}`,
-              'Content-Type': 'application/json',
-            },
-          });
-          if (responseFallback.ok) {
-            data = await responseFallback.json();
-            querySuccess = true;
-            detectedColumn = 'code';
-          }
-        }
-      } catch (e) {
-        // Handled below
-      }
-
-      if (querySuccess) {
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('KEY_NOT_FOUND');
-        }
-      } else {
-        if (upperCode === 'AI2027') {
-          setActiveKey({ code: 'AI2027', credits: 5 });
-          setToolView('builder');
-          return;
-        }
-        throw new Error('KEY_NOT_FOUND');
-      }
-
-      const record = data[0];
-      const credits = typeof record.credits === 'number' ? record.credits : 1;
-
-      if (credits <= 0) {
-        throw new Error('CREDITS_EXHAUSTED');
-      }
-
-      setActiveKey({
-        code: codeToVerify,
-        credits: credits,
-        columnName: detectedColumn
+      const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+      
+      const res = await redeemKeyCode(client, codeToVerify, {
+        id: currentUser.id,
+        email: currentUser.email,
+        currentCredits: currentUser.credits
       });
 
-      setToolView('builder');
+      if (!res.success) {
+        setErrorText(res.message);
+      } else {
+        setAuthSuccessMsg(res.message);
+        
+        const nextBalance = currentUser.credits + res.redeemedCredits;
+        setCurrentUser({
+          ...currentUser,
+          credits: nextBalance
+        });
+        setActiveKey({
+          code: 'حساب مسجل',
+          credits: nextBalance
+        });
+        setActivationCode(''); // reset
+      }
     } catch (err: any) {
       console.error(err);
-      if (err.message === 'CREDITS_EXHAUSTED') {
-        setErrorText('لقد استنفد هذا الكود كامل رصيد التوليد المتاح. يرجى شراء باقة جديدة للحصول على كود جديد.');
-      } else {
-        setErrorText('كود التفعيل خاطئ أو غير متوفر في السحابة.');
-      }
+      setErrorText(err.message || 'فشل فحص كود التفعيل لخطأ طارئ بقاعدة البيانات.');
     } finally {
       setIsVerifying(false);
     }
@@ -661,6 +747,19 @@ export default function ToolSection({
         ...activeKey,
         credits: newCreditsBalance
       });
+
+      if (currentUser && currentUser.id !== 'mock-guest-id-123') {
+        try {
+          const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+          await client.from('profiles').update({ credits: newCreditsBalance }).eq('id', currentUser.id);
+          setCurrentUser({
+            ...currentUser,
+            credits: newCreditsBalance
+          });
+        } catch (e) {
+          console.warn('Credits sync failed with profiles table:', e);
+        }
+      }
 
       let payload: any = null;
       let usedFallback = false;
@@ -809,6 +908,19 @@ export default function ToolSection({
         ...activeKey,
         credits: newCreditsBalance
       });
+
+      if (currentUser && currentUser.id !== 'mock-guest-id-123') {
+        try {
+          const client = getSupabaseClient(supabaseConfig.url, supabaseConfig.anonKey);
+          await client.from('profiles').update({ credits: newCreditsBalance }).eq('id', currentUser.id);
+          setCurrentUser({
+            ...currentUser,
+            credits: newCreditsBalance
+          });
+        } catch (e) {
+          console.warn('Credits sync failed with profiles table for solve action:', e);
+        }
+      }
 
       let payload: any = null;
 
@@ -1318,52 +1430,220 @@ CREATE POLICY "Allow public update" ON public.active_keys FOR UPDATE USING (true
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="max-w-lg mx-auto bg-white border border-slate-150 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-xl relative overflow-hidden"
+                className="max-w-xl mx-auto bg-white border border-slate-150 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-xl relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-60 pointer-events-none" />
                 
+                {/* Header Information */}
                 <div className="text-center space-y-2">
-                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto border border-indigo-100 shadow-sm">
                     <Key className="w-6 h-6 animate-pulse" />
                   </div>
-                  <h2 className="text-xl font-bold text-slate-900">تنشيط بوابة الاختبارات الحيوية</h2>
-                  <p className="text-xs text-slate-400 font-light max-w-sm mx-auto">للبدء برفع ملفات الـ PDF وتوليد بنوك الأسئلة الذكية بضمان دقة كاملة.</p>
+                  <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">نظام التحقق وشحن كوبونات التفعيل</h2>
+                  <p className="text-xs text-slate-400 font-light max-w-sm mx-auto">سجل دخولك لشحن كوبونات التفعيل وحفظ محاولاتك ورصيدك السحابي بشكل دائم.</p>
                 </div>
 
-                <form onSubmit={handleVerifyKey} className="space-y-4">
-                  <div className="space-y-1.5 text-right">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">كود التفعيل المستلم</label>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <input
-                        type="text"
-                        required
-                        value={activationCode}
-                        onChange={(e) => setActivationCode(e.target.value)}
-                        placeholder="Ai2027 للتجربة الفورية"
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-center font-mono font-extrabold text-slate-800 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-150/40 focus:border-indigo-500 transition placeholder:font-sans placeholder:font-normal placeholder:text-slate-350 outline-none"
-                      />
+                {/* Sub-State: LOGGED OUT - SHOW AUTH CARD */}
+                {!currentUser ? (
+                  <div className="space-y-6">
+                    {/* Auth Mode Selectors */}
+                    <div className="flex border-b border-slate-100 pb-1 gap-2">
                       <button
-                        type="submit"
-                        disabled={isVerifying}
-                        className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                        type="button"
+                        onClick={() => {
+                          setIsSignUp(false);
+                          setAuthError(null);
+                          setAuthSuccessMsg(null);
+                        }}
+                        className={`flex-1 pb-3 text-sm font-bold border-b-2 transition ${
+                          !isSignUp ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+                        }`}
                       >
-                        {isVerifying ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            جاري الفحص...
-                          </>
-                        ) : (
-                          'تفعيل الكود والبدء'
-                        )}
+                        تسجيل الدخول للحساب
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSignUp(true);
+                          setAuthError(null);
+                          setAuthSuccessMsg(null);
+                        }}
+                        className={`flex-1 pb-3 text-sm font-bold border-b-2 transition ${
+                          isSignUp ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        إنشاء حساب جديد
                       </button>
                     </div>
-                  </div>
-                </form>
 
-                <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50 text-center text-xs leading-relaxed font-light text-indigo-900">
-                  💡 الكود التجريبي المجاني والمدعوم كاملاً رهن إشارتك: 
-                  <strong className="font-mono bg-white px-1.5 py-0.5 rounded ml-1 border font-black select-all text-indigo-700">Ai2027</strong>
-                </div>
+                    <form onSubmit={handleAuth} className="space-y-4">
+                      {/* Email Input */}
+                      <div className="space-y-1.5 text-right">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">البريد الإلكتروني</label>
+                        <input
+                          type="email"
+                          required
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          placeholder="yourname@gmail.com"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-800 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-150/45 focus:border-indigo-500 transition outline-none"
+                        />
+                      </div>
+
+                      {/* Password Input */}
+                      <div className="space-y-1.5 text-right">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">كلمة المرور</label>
+                        <input
+                          type="password"
+                          required
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-slate-800 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-150/45 focus:border-indigo-500 transition outline-none"
+                        />
+                      </div>
+
+                      {/* Feedback Alerts */}
+                      {authError && (
+                        <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs font-semibold text-right flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                          <span>{authError}</span>
+                        </div>
+                      )}
+
+                      {authSuccessMsg && (
+                        <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs font-semibold text-right flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                          <span>{authSuccessMsg}</span>
+                        </div>
+                      )}
+
+                      {/* Submit Trigger */}
+                      <button
+                        type="submit"
+                        disabled={authLoading}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white py-3.5 rounded-2xl text-xs sm:text-sm font-black shadow-md hover:shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {authLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            جاري الاتصال بقاعدة البيانات...
+                          </>
+                        ) : isSignUp ? (
+                          'تسجيل وكتابة الحساب الجديد'
+                        ) : (
+                          'تسجيل الدخول الآمن للرصيد'
+                        )}
+                      </button>
+                    </form>
+
+                    <div className="relative flex py-2 items-center">
+                      <div className="flex-grow border-t border-slate-100"></div>
+                      <span className="flex-shrink mx-4 text-slate-350 text-[10px] font-bold uppercase">أو للتجربة الفورية</span>
+                      <div className="flex-grow border-t border-slate-100"></div>
+                    </div>
+
+                    {/* Guest Login Option */}
+                    <button
+                      type="button"
+                      onClick={handleGuestLogin}
+                      className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 py-3 rounded-2xl text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Sparkles className="w-4 h-4 text-indigo-500" />
+                      <span>الدخول كضيف تجريبي مباشر (15 محاولة مجاناً)</span>
+                    </button>
+                  </div>
+                ) : (
+                  // SUB-STATE: LOGGED IN - SHOW ACTIVE KEY REDEMPTION FORM
+                  <div className="space-y-6">
+                    {/* User ID Badge */}
+                    <div className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex items-center justify-between gap-4">
+                      <div className="text-right">
+                        <p className="text-[10px] uppercase font-black text-slate-400">الحساب الجاري المفتوح</p>
+                        <p className="text-xs font-bold text-slate-800 font-mono">{currentUser.email}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="text-xs text-red-500 hover:text-red-700 hover:underline font-bold transition cursor-pointer"
+                      >
+                        تسجيل الخروج
+                      </button>
+                    </div>
+
+                    {/* User Remaining Balance Display */}
+                    <div className="text-center p-6 bg-gradient-to-br from-indigo-50/70 to-blue-50/20 border border-indigo-100 rounded-[24px] space-y-2 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-blue-100 rounded-full blur-2xl opacity-40 pointer-events-none" />
+                      <p className="text-xs font-bold text-indigo-950 uppercase tracking-wider">سخاء ومستويات التوليد المتبقية لك</p>
+                      <div className="flex items-baseline justify-center gap-1">
+                        <span className="text-4xl font-extrabold text-indigo-950 font-mono tracking-tight">{currentUser.credits}</span>
+                        <span className="text-xs font-bold text-slate-400">رصيد توليد وحل</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">اشحن رصيدك بالمفتاح أدناه للاستفادة بكامل قدرات مُعلِّـم الذكي.</p>
+                    </div>
+
+                    {/* Key Redemption Form */}
+                    <form onSubmit={handleVerifyKey} className="space-y-4">
+                      <div className="space-y-1.5 text-right">
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-wider">كود شحن الرصيد لتفعيله</label>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <input
+                            type="text"
+                            required
+                            value={activationCode}
+                            onChange={(e) => setActivationCode(e.target.value)}
+                            placeholder="Ai2027 للتجربة الفورية"
+                            className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-center font-mono font-extrabold text-slate-800 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-150/40 focus:border-indigo-500 transition placeholder:font-sans placeholder:font-normal placeholder:text-slate-350 outline-none"
+                          />
+                          <button
+                            type="submit"
+                            disabled={isVerifying}
+                            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            {isVerifying ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                جاري الشحن...
+                              </>
+                            ) : (
+                              'شحن وتفعيل الكوبون'
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+
+                    {/* Feedback messages for logged in redemption */}
+                    {authError && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs font-semibold text-right flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                        <span>{authError}</span>
+                      </div>
+                    )}
+
+                    {authSuccessMsg && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 text-xs font-semibold text-right flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+                        <span>{authSuccessMsg}</span>
+                      </div>
+                    )}
+
+                    {/* CTA to proceed to workbench */}
+                    <button
+                      type="button"
+                      onClick={() => setToolView('builder')}
+                      className="w-full bg-slate-900 text-white rounded-2xl py-3.5 text-xs font-bold shadow-sm hover:bg-slate-800 transition cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <span>تخطي والذهاب لـ ساحة العمل ورفع ملفات PDF</span>
+                      <ArrowRight className="w-4 h-4 text-slate-300" style={{ transform: 'scaleX(-1)' }} />
+                    </button>
+
+                    <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100/50 text-center text-xs leading-relaxed font-light text-indigo-900">
+                      💡 الكود التجريبي المجاني والمدعوم كاملاً رهن إشارتك لشحن الرصيد بأي وقت: 
+                      <strong className="font-mono bg-white px-1.5 py-0.5 rounded ml-1 border font-black select-all text-indigo-700">Ai2027</strong>
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-4 border-t border-dashed border-slate-150 text-center">
                   <p className="text-xs text-slate-400">
